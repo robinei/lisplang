@@ -1,0 +1,8 @@
+/.vs/
+/Debug/
+/Release/
+/*.exe
+/*.o
+/lisplang
+*.vcxproj.filters
+*.vcxproj.user
