@@ -134,7 +134,7 @@ typedef Any(*FunPtr4)(Any a, Any b, Any c, Any d);
 const Type type_any = { KIND_ANY, 0, sizeof(Any) };
 
 const Type type_unit = { KIND_UNIT, 0, 0 };
-const Type type_bool = { KIND_BOOL, 0, sizeof(bool) };
+const Type type_b32 = { KIND_BOOL, 0, sizeof(bool) };
 
 const Type type_u8 = { KIND_U8, 0, sizeof(uint8_t) };
 const Type type_u16 = { KIND_U16, 0, sizeof(uint16_t) };
@@ -162,23 +162,23 @@ const Type type_ref_slice_any = { KIND_REF, 0, sizeof(void *), &type_slice_any }
 
 
 const Any UNIT = { .type = &type_unit };
-const Any TRUE = { .type = &type_bool, .val.b32 = true };
-const Any FALSE = { .type = &type_bool, .val.b32 = false };
+const Any TRUE = { .type = &type_b32, .val.b32 = true };
+const Any FALSE = { .type = &type_b32, .val.b32 = false };
 
-#define U8(x) ((Any) { .type = &type_u8, .val.u8 = (x) })
-#define U16(x) ((Any) { .type = &type_u16, .val.u16 = (x) })
-#define U32(x) ((Any) { .type = &type_u32, .val.u32 = (x) })
-#define U64(x) ((Any) { .type = &type_u64, .val.u64 = (x) })
+#define ANY_U8(x) ((Any) { .type = &type_u8, .val.u8 = (x) })
+#define ANY_U16(x) ((Any) { .type = &type_u16, .val.u16 = (x) })
+#define ANY_U32(x) ((Any) { .type = &type_u32, .val.u32 = (x) })
+#define ANY_U64(x) ((Any) { .type = &type_u64, .val.u64 = (x) })
 
-#define I8(x) ((Any) { .type = &type_i8, .val.i8 = (x) })
-#define I16(x) ((Any) { .type = &type_i16, .val.i16 = (x) })
-#define I32(x) ((Any) { .type = &type_i32, .val.i32 = (x) })
-#define I64(x) ((Any) { .type = &type_i64, .val.i64 = (x) })
+#define ANY_I8(x) ((Any) { .type = &type_i8, .val.i8 = (x) })
+#define ANY_I16(x) ((Any) { .type = &type_i16, .val.i16 = (x) })
+#define ANY_I32(x) ((Any) { .type = &type_i32, .val.i32 = (x) })
+#define ANY_I64(x) ((Any) { .type = &type_i64, .val.i64 = (x) })
 
-#define F32(x) ((Any) { .type = &type_f32, .val.f32 = (x) })
-#define F64(x) ((Any) { .type = &type_f64, .val.f64 = (x) })
+#define ANY_F32(x) ((Any) { .type = &type_f32, .val.f32 = (x) })
+#define ANY_F64(x) ((Any) { .type = &type_f64, .val.f64 = (x) })
 
-#define TYPE(x) ((Any) { .type = &type_type, .val.type = (x) })
+#define ANY_TYPE(x) ((Any) { .type = &type_type, .val.type = (x) })
 
 #define REFCOUNT(ptr) (((uint32_t *)(ptr))[-1])
 #define MAYBE_ADDREF(any) ((any).type->kind == KIND_REF && ++REFCOUNT((any).val.ptr))
@@ -216,16 +216,16 @@ Any to_any(void *ptr, const Type *type) {
     case KIND_ANY:  return *(Any *)ptr;
     case KIND_UNIT: return UNIT;
     case KIND_BOOL: return *(bool *)ptr ? TRUE : FALSE;
-    case KIND_U8:   return U8(*(uint8_t *)ptr);
-    case KIND_U16:  return U16(*(uint16_t *)ptr);
-    case KIND_U32:  return U32(*(uint32_t *)ptr);
-    case KIND_U64:  return U64(*(uint64_t *)ptr);
-    case KIND_I8:   return I8(*(int8_t *)ptr);
-    case KIND_I16:  return I16(*(int16_t *)ptr);
-    case KIND_I32:  return I32(*(int32_t *)ptr);
-    case KIND_I64:  return I64(*(int64_t *)ptr);
-    case KIND_F32:  return F32(*(float *)ptr);
-    case KIND_F64:  return F64(*(double *)ptr);
+    case KIND_U8:   return ANY_U8(*(uint8_t *)ptr);
+    case KIND_U16:  return ANY_U16(*(uint16_t *)ptr);
+    case KIND_U32:  return ANY_U32(*(uint32_t *)ptr);
+    case KIND_U64:  return ANY_U64(*(uint64_t *)ptr);
+    case KIND_I8:   return ANY_I8(*(int8_t *)ptr);
+    case KIND_I16:  return ANY_I16(*(int16_t *)ptr);
+    case KIND_I32:  return ANY_I32(*(int32_t *)ptr);
+    case KIND_I64:  return ANY_I64(*(int64_t *)ptr);
+    case KIND_F32:  return ANY_F32(*(float *)ptr);
+    case KIND_F64:  return ANY_F64(*(double *)ptr);
     case KIND_SYMBOL:
     case KIND_TYPE:
     case KIND_PTR:
@@ -300,10 +300,10 @@ Any array_length(Any arr) {
     assert(value_type);
 
     if (arr_type->size < 0) {
-        return U64(arr.val.array_ptr->length);
+        return ANY_U64(arr.val.array_ptr->length);
     }
     else {
-        return U64(arr_type->size / value_type->size);
+        return ANY_U64(arr_type->size / value_type->size);
     }
 }
 
@@ -361,20 +361,57 @@ Any array_set(Any arr, Any idx, Any val) {
 
 
 
+#define FOR_ALL_UNSIGNED_TYPES(X) \
+    X(U8, u8) \
+    X(U16, u16) \
+    X(U32, u32) \
+    X(U64, u64) 
+
+#define FOR_ALL_SIGNED_TYPES(X) \
+    X(I8, i8) \
+    X(I16, i16) \
+    X(I32, i32) \
+    X(I64, i64)
+
+#define FOR_ALL_REAL_TYPES(X) \
+    X(F32, f32) \
+    X(F64, f64)
+
+#define FOR_ALL_INT_TYPES(X) \
+    FOR_ALL_UNSIGNED_TYPES(X) \
+    FOR_ALL_SIGNED_TYPES(X)
+
+#define FOR_ALL_NUM_TYPES(X) \
+    FOR_ALL_INT_TYPES(X) \
+    FOR_ALL_REAL_TYPES(X)
+
+#define FOR_ALL_PRIM_TYPES(X) \
+    FOR_ALL_NUM_TYPES(X) \
+    X(BOOL, b32)
+
 
 typedef struct VMCtx VMCtx;
 typedef struct Function Function;
 
+#define DEFINE_ADD_OP_ENUMS(TYP, typ) OP_ADD_ ## TYP,
+#define DEFINE_SUB_OP_ENUMS(TYP, typ) OP_SUB_ ## TYP,
+#define DEFINE_MUL_OP_ENUMS(TYP, typ) OP_MUL_ ## TYP,
+#define DEFINE_DIV_OP_ENUMS(TYP, typ) OP_DIV_ ## TYP,
+
 enum {
     OP_LABEL, /* labels are eliminated during compilation */
+
+    /* these specify a label. they will be replaced by the below */
     OP_JUMP_LABEL,
     OP_JFALSE_LABEL,
     OP_JTRUE_LABEL,
 
+    /* these specify a relative instruction pointer offset. they replace the above */
     OP_JUMP,
     OP_JFALSE,
     OP_JTRUE,
-    OP_TCALL,
+
+    OP_TCALL, /* tail call. can be used in tail position instead of RET */
     OP_CALL,
     OP_RET,
 
@@ -405,35 +442,23 @@ enum {
 
     OP_ANY_TO_UNIT,
     OP_ANY_TO_BOOL,
+    OP_ANY_TO_U8,
+    OP_ANY_TO_U16,
     OP_ANY_TO_U32,
     OP_ANY_TO_U64,
+    OP_ANY_TO_I8,
+    OP_ANY_TO_I16,
     OP_ANY_TO_I32,
     OP_ANY_TO_I64,
     OP_ANY_TO_F32,
     OP_ANY_TO_F64,
 
-    OP_ADD,
-    OP_ADD_F32,
-    OP_ADD_F64,
-
-    OP_SUB,
-    OP_SUB_F32,
-    OP_SUB_F64,
-
-    OP_MUL_U32,
-    OP_MUL_U64,
-    OP_MUL_I32,
-    OP_MUL_I64,
-    OP_MUL_F32,
-    OP_MUL_F64,
+    FOR_ALL_NUM_TYPES(DEFINE_ADD_OP_ENUMS)
+    FOR_ALL_NUM_TYPES(DEFINE_SUB_OP_ENUMS)
+    FOR_ALL_NUM_TYPES(DEFINE_MUL_OP_ENUMS)
+    FOR_ALL_NUM_TYPES(DEFINE_DIV_OP_ENUMS)
 };
 
-#define INSTR(Op) ((Word) { .i.op = (Op) })
-#define INSTR_WITH_EXTRA(Op, Extra) ((Word) { .i.op = (Op), .i.extra = (Extra) })
-#define INSTR_OP(instr) ((instr).i.op)
-#define INSTR_I32(instr) ((int32_t)(instr).i.extra)
-#define INSTR_U32(instr) ((uint32_t)(instr).i.extra)
-#define INSTR_U64(instr) ((instr).i.extra)
 
 struct VMCtx {
     Word *stack;
@@ -444,9 +469,36 @@ struct Function {
     Word *code;
 };
 
+
 #define MAX_STACK 4096
 #define STACK_START (vmcx->stack)
 #define STACK_END (STACK_START + MAX_STACK)
+
+#define INSTR(Op) ((Word) { .i.op = (Op) })
+#define INSTR_WITH_EXTRA(Op, Extra) ((Word) { .i.op = (Op), .i.extra = (Extra) })
+#define INSTR_OP(instr) ((instr).i.op)
+#define INSTR_I32(instr) ((int32_t)(instr).i.extra)
+#define INSTR_U32(instr) ((uint32_t)(instr).i.extra)
+#define INSTR_U64(instr) ((instr).i.extra)
+
+
+#define DEFINE_TO_ANY_OP(TYP, typ) \
+    case OP_ ## TYP ## _TO_ANY: \
+        *(Any *)(sp - 1) = (Any) { .type = &type_ ## typ, .val.typ = sp[-1].typ }; \
+        ++sp; \
+        continue;
+
+#define DEFINE_FROM_ANY_OP(TYP, typ) \
+    case OP_ANY_TO_ ## TYP: \
+        assert(&type_ ## typ == ((Any *)(sp - 1))->type); \
+        sp[-2].typ = ((Any *)(sp - 1))->val.typ; \
+        --sp; \
+        continue;
+
+#define DEFINE_ADD_OP(TYP, typ) case OP_ADD_ ## TYP: sp[-2].typ += sp[-1].typ; --sp; continue;
+#define DEFINE_SUB_OP(TYP, typ) case OP_SUB_ ## TYP: sp[-2].typ -= sp[-1].typ; --sp; continue;
+#define DEFINE_MUL_OP(TYP, typ) case OP_MUL_ ## TYP: sp[-2].typ *= sp[-1].typ; --sp; continue;
+#define DEFINE_DIV_OP(TYP, typ) case OP_DIV_ ## TYP: sp[-2].typ /= sp[-1].typ; --sp; continue;
 
 void call(VMCtx *vmcx, Function *fun) {
     Word *sp = vmcx->sp; /* stack pointer */
@@ -462,30 +514,32 @@ void call(VMCtx *vmcx, Function *fun) {
             continue;
         case OP_JFALSE:
             assert(sp > STACK_START);
-            if (!sp[-1].b32) {
+            if (!sp[-1].u64) {
                 ip += INSTR_I32(instr) - 1;
             }
             continue;
         case OP_JTRUE:
             assert(sp > STACK_START);
-            if (sp[-1].b32) {
+            if (sp[-1].u64) {
                 ip += INSTR_I32(instr) - 1;
             }
             continue;
         case OP_TCALL: {
             Function *fun = *(Function **)(sp - 1);
             fp = ++sp;
-            ip = fun->code; /* tail call means we just overwrite these */
+            ip = fun->code; /* tail call means we just overwrite these, and don't grow the call stack */
             continue;
         }
         case OP_CALL: {
             Function *fun = *(Function **)(sp - 1);
             vmcx->sp = ++sp;
-            call(vmcx, fun);
+            call(vmcx, fun); /* just use the C call stack */
             sp = vmcx->sp;
             continue;
         }
-        case OP_RET: vmcx->sp = sp; return;
+        case OP_RET:
+            vmcx->sp = sp;
+            return; /* since we juse the C call stack we just return */
 
         case OP_DUP: *sp++ = sp[-1]; continue;
         case OP_PRINT: --sp; printf("%llu\n", sp->u64); continue;
@@ -519,40 +573,13 @@ void call(VMCtx *vmcx, Function *fun) {
             continue;
         }
 
-        case OP_UNIT_TO_ANY:    *(Any *)(sp    ) = (Any) { .type = &type_unit }; ++sp; continue;
-        case OP_BOOL_TO_ANY:    *(Any *)(sp - 1) = (Any) { .type = &type_bool,  .val.b32 = sp[-1].b32 }; ++sp; continue;
-        case OP_U8_TO_ANY:      *(Any *)(sp - 1) = (Any) { .type = &type_u8,    .val.u8  = sp[-1].u8  }; ++sp; continue;
-        case OP_U16_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_u16,   .val.u16 = sp[-1].u16 }; ++sp; continue;
-        case OP_U32_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_u32,   .val.u32 = sp[-1].u32 }; ++sp; continue;
-        case OP_U64_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_u64,   .val.u64 = sp[-1].u64 }; ++sp; continue;
-        case OP_I8_TO_ANY:      *(Any *)(sp - 1) = (Any) { .type = &type_i8,    .val.i8  = sp[-1].i8  }; ++sp; continue;
-        case OP_I16_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_i16,   .val.i16 = sp[-1].i16 }; ++sp; continue;
-        case OP_I32_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_i32,   .val.i32 = sp[-1].i32 }; ++sp; continue;
-        case OP_I64_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_i64,   .val.i64 = sp[-1].i64 }; ++sp; continue;
-        case OP_F32_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_f32,   .val.f32 = sp[-1].f32 }; ++sp; continue;
-        case OP_F64_TO_ANY:     *(Any *)(sp - 1) = (Any) { .type = &type_f64,   .val.f64 = sp[-1].f64 }; ++sp; continue;
-
-        case OP_ANY_TO_UNIT: continue;
-        case OP_ANY_TO_BOOL: continue;
-        case OP_ANY_TO_U32: continue;
-        case OP_ANY_TO_U64: continue;
-        case OP_ANY_TO_I32: continue;
-        case OP_ANY_TO_I64: continue;
-        case OP_ANY_TO_F32: continue;
-        case OP_ANY_TO_F64: continue;
-
-        case OP_ADD:     sp[-2].u64 += sp[-1].u64; --sp; continue;
-        case OP_ADD_F32: sp[-2].f32 += sp[-1].f32; --sp; continue;
-        case OP_ADD_F64: sp[-2].f64 += sp[-1].f64; --sp; continue;
-
-        case OP_SUB:     sp[-2].u64 -= sp[-1].u64; --sp; continue;
-        case OP_SUB_F32: sp[-2].f32 -= sp[-1].f32; --sp; continue;
-        case OP_SUB_F64: sp[-2].f64 -= sp[-1].f64; --sp; continue;
-
-        case OP_MUL_U64: sp[-2].u64 *= sp[-1].u64; --sp; continue;
-        case OP_MUL_I64: sp[-2].i64 *= sp[-1].i64; --sp; continue;
-        case OP_MUL_F32: sp[-2].f32 *= sp[-1].f32; --sp; continue;
-        case OP_MUL_F64: sp[-2].f64 *= sp[-1].f64; --sp; continue;
+        case OP_UNIT_TO_ANY: *(Any *)(sp) = (Any) { .type = &type_unit }; ++sp; continue;
+        FOR_ALL_PRIM_TYPES(DEFINE_TO_ANY_OP)
+        FOR_ALL_PRIM_TYPES(DEFINE_FROM_ANY_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_ADD_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_SUB_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_MUL_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_DIV_OP)
 
         default:
             assert(0 && "bad opcode");
@@ -720,6 +747,13 @@ static void strip_labels(CompilerCtx *cctx) {
     U32Map_free(&label_offsets);
 }
 
+#define DEFINE_PRINT_TO_ANY_OP(TYP, typ) case OP_ ## TYP ## _TO_ANY: printf(#typ "_to_any\n"); break;
+#define DEFINE_PRINT_FROM_ANY_OP(TYP, typ) case OP_ANY_TO_ ## TYP: printf("any_to_" #typ "\n"); break;
+#define DEFINE_PRINT_ADD_OP(TYP, typ) case OP_ADD_ ## TYP: printf("add_" #typ "\n"); break;
+#define DEFINE_PRINT_SUB_OP(TYP, typ) case OP_SUB_ ## TYP: printf("sub_" #typ "\n"); break;
+#define DEFINE_PRINT_MUL_OP(TYP, typ) case OP_MUL_ ## TYP: printf("mul_" #typ "\n"); break;
+#define DEFINE_PRINT_DIV_OP(TYP, typ) case OP_DIV_ ## TYP: printf("div_" #typ "\n"); break;
+
 static void print_code(CompilerCtx *cctx) {
     uint32_t i = 0;
     Word *code = cctx->code;
@@ -751,41 +785,13 @@ static void print_code(CompilerCtx *cctx) {
         case OP_LOCAL_N_WORDS: printf("localn %u@%llu\n", INSTR_U32(instr), code[i + 1].u64); break;
 
         case OP_UNIT_TO_ANY: printf("unit_to_any\n"); break;
-        case OP_BOOL_TO_ANY: printf("bool_to_any\n"); break;
-        case OP_U8_TO_ANY: printf("u8_to_any\n"); break;
-        case OP_U16_TO_ANY: printf("u16_to_any\n"); break;
-        case OP_U32_TO_ANY: printf("u32_to_any\n"); break;
-        case OP_U64_TO_ANY: printf("u64_to_any\n"); break;
-        case OP_I8_TO_ANY: printf("i8_to_any\n"); break;
-        case OP_I16_TO_ANY: printf("i16_to_any\n"); break;
-        case OP_I32_TO_ANY: printf("i32_to_any\n"); break;
-        case OP_I64_TO_ANY: printf("i64_to_any\n"); break;
-        case OP_F32_TO_ANY: printf("f32_to_any\n"); break;
-        case OP_F64_TO_ANY: printf("f64_to_any\n"); break;
-
         case OP_ANY_TO_UNIT: printf("any_to_unit\n"); break;
-        case OP_ANY_TO_BOOL: printf("any_to_bool\n"); break;
-        case OP_ANY_TO_U32: printf("any_to_u32\n"); break;
-        case OP_ANY_TO_U64: printf("any_to_u64\n"); break;
-        case OP_ANY_TO_I32: printf("any_to_i32\n"); break;
-        case OP_ANY_TO_I64: printf("any_to_i64\n"); break;
-        case OP_ANY_TO_F32: printf("any_to_f32\n"); break;
-        case OP_ANY_TO_F64: printf("any_to_f64\n"); break;
-
-        case OP_ADD: printf("add32\n"); break;
-        case OP_ADD_F32: printf("add32f\n"); break;
-        case OP_ADD_F64: printf("add64f\n"); break;
-
-        case OP_SUB: printf("sub\n"); break;
-        case OP_SUB_F32: printf("sub32f\n"); break;
-        case OP_SUB_F64: printf("sub64f\n"); break;
-
-        case OP_MUL_U32: printf("mul32u\n"); break;
-        case OP_MUL_U64: printf("mul64u\n"); break;
-        case OP_MUL_I32: printf("mul32i\n"); break;
-        case OP_MUL_I64: printf("mul64i\n"); break;
-        case OP_MUL_F32: printf("mul32f\n"); break;
-        case OP_MUL_F64: printf("mul64f\n"); break;
+        FOR_ALL_NUM_TYPES(DEFINE_PRINT_TO_ANY_OP)
+        FOR_ALL_PRIM_TYPES(DEFINE_PRINT_FROM_ANY_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_PRINT_ADD_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_PRINT_SUB_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_PRINT_MUL_OP)
+        FOR_ALL_NUM_TYPES(DEFINE_PRINT_DIV_OP)
 
         }
 
@@ -870,7 +876,7 @@ int main() {
     emit_u64(cctx, OP_DUP);
     emit_u64(cctx, OP_PRINT);
     emit_lit_7_bytes(cctx, 1);
-    emit_u64(cctx, OP_SUB);
+    emit_u64(cctx, OP_SUB_U64);
     emit_jtrue(cctx, 123);
     emit_u64(cctx, OP_RET);
 
@@ -884,7 +890,7 @@ int main() {
     printf("\n");
 
     Function fun = { cctx->code };
-    VMCtx vm = { malloc(sizeof(uint64_t) * MAX_STACK) };
+    VMCtx vm = { malloc(sizeof(Word) * MAX_STACK) };
     vm.sp = vm.stack;
 
     fgetc(stdin);
