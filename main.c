@@ -421,6 +421,13 @@ enum {
     OP_MUL_F64,
 };
 
+#define INSTR_OP_BITS 8
+#define INSTR_OP_MASK 0xff
+#define INSTR_OP(instr) ((instr) & INSTR_OP_MASK)
+#define INSTR_I32(instr) ((int32_t)((instr) >> INSTR_OP_BITS))
+#define INSTR_U32(instr) ((uint32_t)((instr) >> INSTR_OP_BITS))
+#define INSTR_U64(instr) ((instr) >> INSTR_OP_BITS)
+
 struct VMCtx {
     uint64_t *stack;
     uint64_t *sp;
@@ -441,22 +448,21 @@ void call(VMCtx *vmcx, Function *fun) {
 
     while (true) {
         uint64_t instr = *ip++;
-        uint32_t op = instr & 0xff;
 
-        switch (op) {
+        switch (INSTR_OP(instr)) {
         case OP_JUMP:
-            ip += (int32_t)(instr >> 8) - 1; /* jump target encoded in op */
+            ip += INSTR_I32(instr) - 1;
             continue;
         case OP_JFALSE:
             assert(sp > STACK_START);
             if (!sp[-1]) {
-                ip += (int32_t)(instr >> 8) - 1; /* jump target encoded in op */
+                ip += INSTR_I32(instr) - 1;
             }
             continue;
         case OP_JTRUE:
             assert(sp > STACK_START);
             if (sp[-1]) {
-                ip += (int32_t)(instr >> 8) - 1; /* jump target encoded in op */
+                ip += INSTR_I32(instr) - 1;
             }
             continue;
         case OP_TCALL: {
@@ -479,14 +485,14 @@ void call(VMCtx *vmcx, Function *fun) {
 
         case OP_LIT_7_BYTES:
             assert(sp < STACK_END);
-            *sp++ = instr >> 8; /* 3 bytes encoded in op */
+            *sp++ = INSTR_U64(instr); /* 7 bytes encoded in op */
             continue;
         case OP_LIT_1_WORD:
             assert(sp < STACK_END);
             *sp++ = *ip++; /* 1 word following op */
             continue;
         case OP_LIT_N_WORDS: {
-            uint32_t n = (uint32_t)(instr >> 8); /* word count encoded in op */
+            uint32_t n = INSTR_U32(instr); /* word count encoded in op */
             assert(sp + n < STACK_END);
             memcpy(sp, ip, n * sizeof(uint64_t)); /* copy N words following op */
             sp += n;
@@ -495,10 +501,10 @@ void call(VMCtx *vmcx, Function *fun) {
         }
 
         case OP_LOCAL_1_WORD:
-            *sp++ = *(fp - (instr >> 8)); /* frame pointer offset is encoded in op */
+            *sp++ = *(fp - INSTR_U64(instr)); /* frame pointer offset is encoded in op */
             continue;
         case OP_LOCAL_N_WORDS: {
-            uint32_t n = (uint8_t)(instr >> 8); /* word count encoded in op */
+            uint32_t n = INSTR_U32(instr); /* word count encoded in op */
             memcpy(sp, fp - *ip++, n * sizeof(uint64_t)); /* copy N words from call frame (frame pointer offset following op) */
             sp += n;
             continue;
@@ -585,27 +591,27 @@ static void emit_words(CompilerCtx *cctx, uint64_t *words, uint32_t count) {
 
 static void emit_label(CompilerCtx *cctx, uint32_t label) {
     assert(label < (1 << 24));
-    emit(cctx, OP_LABEL | (label << 8));
+    emit(cctx, OP_LABEL | (label << INSTR_OP_BITS));
 }
 
 static void emit_jump(CompilerCtx *cctx, uint32_t label) {
     assert(label < (1 << 24));
-    emit(cctx, OP_JUMP_LABEL | (label << 8));
+    emit(cctx, OP_JUMP_LABEL | (label << INSTR_OP_BITS));
 }
 
 static void emit_jfalse(CompilerCtx *cctx, uint32_t label) {
     assert(label < (1 << 24));
-    emit(cctx, OP_JFALSE_LABEL | (label << 8));
+    emit(cctx, OP_JFALSE_LABEL | (label << INSTR_OP_BITS));
 }
 
 static void emit_jtrue(CompilerCtx *cctx, uint32_t label) {
     assert(label < (1 << 24));
-    emit(cctx, OP_JTRUE_LABEL | (label << 8));
+    emit(cctx, OP_JTRUE_LABEL | (label << INSTR_OP_BITS));
 }
 
 static void emit_lit_7_bytes(CompilerCtx *cctx, uint64_t word) {
     assert(word < (1 << 24));
-    emit(cctx, OP_LIT_7_BYTES | (word << 8));
+    emit(cctx, OP_LIT_7_BYTES | (word << INSTR_OP_BITS));
 }
 
 static void emit_lit_1_word(CompilerCtx *cctx, uint64_t word) {
@@ -614,14 +620,14 @@ static void emit_lit_1_word(CompilerCtx *cctx, uint64_t word) {
 }
 
 static uint32_t instr_word_count(uint64_t instr) {
-    switch (instr & 0xff) {
+    switch (INSTR_OP(instr)) {
     case OP_TCALL:
     case OP_CALL:
     case OP_LIT_1_WORD:
     case OP_LOCAL_N_WORDS:
         return 2;
     case OP_LIT_N_WORDS:
-        return 1 + (uint32_t)(instr >> 8);
+        return 1 + INSTR_U32(instr);
     default:
         return 1;
     }
@@ -652,8 +658,8 @@ static void strip_labels(CompilerCtx *cctx) {
     while (i < count) {
         uint64_t instr = code[i];
 
-        if ((instr & 0xff) == OP_LABEL) {
-            U32Map_put(&label_offsets, (uint32_t)(instr >> 8), cctx->code_used);
+        if (INSTR_OP(instr) == OP_LABEL) {
+            U32Map_put(&label_offsets, INSTR_U32(instr), cctx->code_used);
             ++i;
         }
         else {
@@ -673,7 +679,7 @@ static void strip_labels(CompilerCtx *cctx) {
         uint64_t instr = code[i];
         uint32_t new_op;
 
-        switch (instr & 0xff) {
+        switch (INSTR_OP(instr)) {
         case OP_JUMP_LABEL:
             new_op = OP_JUMP;
             break;
@@ -689,14 +695,13 @@ static void strip_labels(CompilerCtx *cctx) {
         }
 
         uint32_t offset;
-        if (!U32Map_get(&label_offsets, (uint32_t)(instr >> 8), &offset)) {
+        if (!U32Map_get(&label_offsets, INSTR_U32(instr), &offset)) {
             assert(0 && "label unexpectedly not found");
         }
         assert(offset < (1 << 24));
         int32_t relative_offset = (int32_t)offset - i;
         assert(relative_offset);
-        uint64_t new_instr = new_op | ((uint64_t)relative_offset << 8);
-        code[i++] = new_instr;
+        code[i++] = new_op | ((uint64_t)relative_offset << INSTR_OP_BITS);
     }
 
     U32Map_free(&label_offsets);
@@ -709,16 +714,15 @@ static void print_code(CompilerCtx *cctx) {
 
     while (i < count) {
         uint64_t instr = code[i];
-        uint32_t op = instr & 0xff;
 
-        switch (op) {
-        case OP_LABEL: printf("label %u\n", (uint32_t)(instr >> 8)); break;
-        case OP_JUMP_LABEL: printf("jump_label %u\n", (uint32_t)(instr >> 8)); break;
-        case OP_JFALSE_LABEL: printf("jfalse_label %u\n", (uint32_t)(instr >> 8)); break;
-        case OP_JTRUE_LABEL: printf("jtrue_label %u\n", (uint32_t)(instr >> 8)); break;
-        case OP_JUMP: printf("jump %d\n", (int32_t)(uint32_t)(instr >> 8)); break;
-        case OP_JFALSE: printf("jfalse %d\n", (int32_t)(uint32_t)(instr >> 8)); break;
-        case OP_JTRUE: printf("jtrue %d\n", (int32_t)(uint32_t)(instr >> 8)); break;
+        switch (INSTR_OP(instr)) {
+        case OP_LABEL: printf("label %u\n", INSTR_U32(instr)); break;
+        case OP_JUMP_LABEL: printf("jump_label %u\n", INSTR_U32(instr)); break;
+        case OP_JFALSE_LABEL: printf("jfalse_label %u\n", INSTR_U32(instr)); break;
+        case OP_JTRUE_LABEL: printf("jtrue_label %u\n", INSTR_U32(instr)); break;
+        case OP_JUMP: printf("jump %d\n", INSTR_I32(instr)); break;
+        case OP_JFALSE: printf("jfalse %d\n", INSTR_I32(instr)); break;
+        case OP_JTRUE: printf("jtrue %d\n", INSTR_I32(instr)); break;
         case OP_TCALL: printf("tcall\n"); break;
         case OP_CALL: printf("call\n"); break;
         case OP_RET: printf("ret\n"); break;
@@ -726,12 +730,12 @@ static void print_code(CompilerCtx *cctx) {
         case OP_DUP: printf("dup\n"); break;
         case OP_PRINT: printf("print\n"); break;
 
-        case OP_LIT_7_BYTES: printf("lit %llu\n", instr >> 8); break;
+        case OP_LIT_7_BYTES: printf("lit %llu\n", INSTR_U64(instr)); break;
         case OP_LIT_1_WORD: printf("lit %llu\n", code[i + 1]); break;
-        case OP_LIT_N_WORDS: printf("litn %u ...\n", (uint32_t)(instr >> 8)); break;
+        case OP_LIT_N_WORDS: printf("litn %u ...\n", INSTR_U32(instr)); break;
 
-        case OP_LOCAL_1_WORD: printf("local %u\n", (uint32_t)(instr >> 8)); break;
-        case OP_LOCAL_N_WORDS: printf("localn %u@%llu\n", (uint32_t)(instr >> 8), code[i + 1]); break;
+        case OP_LOCAL_1_WORD: printf("local %u\n", INSTR_U32(instr)); break;
+        case OP_LOCAL_N_WORDS: printf("localn %u@%llu\n", INSTR_U32(instr), code[i + 1]); break;
 
         case OP_UNIT_TO_ANY: printf("unit_to_any\n"); break;
         case OP_BOOL_TO_ANY: printf("bool_to_any\n"); break;
