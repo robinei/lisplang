@@ -9,13 +9,10 @@
 
 
 typedef struct Type Type;
-
-
-typedef struct Symbol Symbol;
-typedef struct String String;
 typedef struct Cons Cons;
-typedef struct Array Array;
-typedef struct Slice Slice;
+typedef struct U8Array U8Array;
+typedef U8Array Symbol;
+typedef U8Array String;
 
 typedef union Word Word;
 union Word {
@@ -40,12 +37,11 @@ union Word {
     double f64;
 
     Type *type;
-    Symbol *symbol;
 
     void *ptr;
-    String *string_ptr;
+    char *char_ptr;
     Cons *cons_ptr;
-    Array *array_ptr;
+    U8Array *u8_array_ptr;
 };
 
 
@@ -79,8 +75,6 @@ enum {
     KIND_I64,
     KIND_F32,
     KIND_F64,
-    KIND_SYMBOL,
-    KIND_TYPE,
     KIND_PTR,
     KIND_REF, /* regular pointer, but the pointed to value is preceded by a 32 bit reference count */
     KIND_REF_SLICE, /* regular pointer to ref-counted array.
@@ -88,12 +82,9 @@ enum {
                        so only the kind is available from there, and the type pointer must be
                        retrieved from the boxed array object */
 
-    /* the following types must be wrapped in a PTR or REF to be passed as Any.
-       (except STRUCT or ARRAY, if they are 8 bytes or less in size. */
+    /* the following types must be wrapped in a PTR or REF to be passed as Any,
+       if they are larger than 8 bytes. */
     KIND_ARRAY,
-    KIND_SLICE,
-    KIND_STRING,
-    KIND_CONS,
     KIND_STRUCT,
 };
 
@@ -109,46 +100,38 @@ enum {
 
 typedef struct StructField StructField;
 struct StructField {
-    Symbol *name;
-    Type *type;
+    const Symbol *name;
+    const Type *type;
     uint32_t offset;
+};
+
+typedef struct StructFieldArray StructFieldArray;
+struct StructFieldArray {
+    uint32_t length;
+    StructField fields[];
 };
 
 struct Type {
     uint32_t kind;
     uint32_t flags;
     uint32_t size;
+    uint32_t salt; /* used to make sure we can get a unique hash for each type */
+    uint32_t hash; /* hash of this type. this field is not itself hashed! */
+
     const Type *target;
 
-    uint32_t field_count;
-    StructField *fields;
+    StructFieldArray *fields;
 };
 
-
-struct Symbol {
-    uint32_t length;
-    char data[];
-};
-
-struct String {
-    uint32_t length;
-    char data[];
-};
 
 struct Cons {
     Any car;
     Any cdr;
 };
 
-struct Array {
+struct U8Array {
     uint32_t length;
-    char data[];
-};
-
-struct Slice {
-    Array *array;
-    uint32_t offset;
-    uint32_t length;
+    uint8_t data[];
 };
 
 
@@ -159,54 +142,50 @@ typedef Any(*FunPtr3)(Any a, Any b, Any c);
 typedef Any(*FunPtr4)(Any a, Any b, Any c, Any d);
 
 
-const Type type_any = { .kind = KIND_ANY, .size = sizeof(Any) };
+const Type *type_type;
+const Type *type_ptr_type;
 
-const Type type_unit = { .kind = KIND_UNIT };
-const Type type_b32 = { .kind = KIND_BOOL, .size = sizeof(bool) };
+const Type *type_any;
 
-const Type type_u8 = { .kind = KIND_U8, .size = sizeof(uint8_t) };
-const Type type_u16 = { .kind = KIND_U16, .size = sizeof(uint16_t) };
-const Type type_u32 = { .kind = KIND_U32, .size = sizeof(uint32_t) };
-const Type type_u64 = { .kind = KIND_U64, .size = sizeof(uint64_t) };
+const Type *type_unit;
+const Type *type_b32;
 
-const Type type_i8 = { .kind = KIND_I8, .size = sizeof(int8_t) };
-const Type type_i16 = { .kind = KIND_I16, .size = sizeof(int16_t) };
-const Type type_i32 = { .kind = KIND_I32, .size = sizeof(int32_t) };
-const Type type_i64 = { .kind = KIND_I64, .size = sizeof(int64_t) };
+const Type *type_u8;
+const Type *type_u16;
+const Type *type_u32;
+const Type *type_u64;
 
-const Type type_f32 = { .kind = KIND_F32, .size = sizeof(float) };
-const Type type_f64 = { .kind = KIND_F64, .size = sizeof(double) };
+const Type *type_i8;
+const Type *type_i16;
+const Type *type_i32;
+const Type *type_i64;
 
-const Type type_type = { .kind = KIND_TYPE, .size = sizeof(void *) };
+const Type *type_f32;
+const Type *type_f64;
 
-const Type type_string = { .kind = KIND_STRING, .flags = TYPE_FLAG_UNSIZED };
-const Type type_ref_string = { .kind = KIND_REF, .size = sizeof(void *), .target = &type_string };
-
-const Type type_cons = { .kind = KIND_CONS, .size = sizeof(Cons) };
-const Type type_ref_cons = { .kind = KIND_REF, .size = sizeof(void *), .target = &type_cons };
-
-const Type type_slice_any = { .kind = KIND_ARRAY, .flags = TYPE_FLAG_UNSIZED, .target = &type_any };
-const Type type_ref_slice_any = { .kind = KIND_REF, .size = sizeof(void *), .target = &type_slice_any };
+const Type *type_ptr_symbol;
+const Type *type_ref_string;
+const Type *type_ref_cons;
 
 
-const Any UNIT = { .t.type = &type_unit };
-const Any TRUE = { .t.type = &type_b32, .val.b32 = true };
-const Any FALSE = { .t.type = &type_b32, .val.b32 = false };
+#define ANY_UNIT ((Any) { .t.type = type_unit })
+#define ANY_TRUE ((Any) { .t.type = type_b32, .val.b32 = true })
+#define ANY_FALSE ((Any) { .t.type = type_b32, .val.b32 = false })
 
-#define MAKE_ANY_U8(x) ((Any) { .t.type = &type_u8, .val.u8 = (x) })
-#define MAKE_ANY_U16(x) ((Any) { .t.type = &type_u16, .val.u16 = (x) })
-#define MAKE_ANY_U32(x) ((Any) { .t.type = &type_u32, .val.u32 = (x) })
-#define MAKE_ANY_U64(x) ((Any) { .t.type = &type_u64, .val.u64 = (x) })
+#define MAKE_ANY_U8(x) ((Any) { .t.type = type_u8, .val.u8 = (x) })
+#define MAKE_ANY_U16(x) ((Any) { .t.type = type_u16, .val.u16 = (x) })
+#define MAKE_ANY_U32(x) ((Any) { .t.type = type_u32, .val.u32 = (x) })
+#define MAKE_ANY_U64(x) ((Any) { .t.type = type_u64, .val.u64 = (x) })
 
-#define MAKE_ANY_I8(x) ((Any) { .t.type = &type_i8, .val.i8 = (x) })
-#define MAKE_ANY_I16(x) ((Any) { .t.type = &type_i16, .val.i16 = (x) })
-#define MAKE_ANY_I32(x) ((Any) { .t.type = &type_i32, .val.i32 = (x) })
-#define MAKE_ANY_I64(x) ((Any) { .t.type = &type_i64, .val.i64 = (x) })
+#define MAKE_ANY_I8(x) ((Any) { .t.type = type_i8, .val.i8 = (x) })
+#define MAKE_ANY_I16(x) ((Any) { .t.type = type_i16, .val.i16 = (x) })
+#define MAKE_ANY_I32(x) ((Any) { .t.type = type_i32, .val.i32 = (x) })
+#define MAKE_ANY_I64(x) ((Any) { .t.type = type_i64, .val.i64 = (x) })
 
-#define MAKE_ANY_F32(x) ((Any) { .t.type = &type_f32, .val.f32 = (x) })
-#define MAKE_ANY_F64(x) ((Any) { .t.type = &type_f64, .val.f64 = (x) })
+#define MAKE_ANY_F32(x) ((Any) { .t.type = type_f32, .val.f32 = (x) })
+#define MAKE_ANY_F64(x) ((Any) { .t.type = type_f64, .val.f64 = (x) })
 
-#define MAKE_ANY_TYPE(x) ((Any) { .t.type = &type_type, .val.type = (x) })
+#define MAKE_ANY_TYPE(x) ((Any) { .t.type = type_ptr_type, .val.type = (x) })
 
 #define REFCOUNT(ptr) (((uint32_t *)(ptr))[-1])
 #define MAYBE_ADDREF(any) (ANY_KIND(any) == KIND_REF && ++REFCOUNT((any).val.ptr))
@@ -242,8 +221,8 @@ uint32_t to_u32(Any num) {
 Any to_any(void *ptr, const Type *type) {
     switch (type->kind) {
     case KIND_ANY:  return *(Any *)ptr;
-    case KIND_UNIT: return UNIT;
-    case KIND_BOOL: return *(bool *)ptr ? TRUE : FALSE;
+    case KIND_UNIT: return ANY_UNIT;
+    case KIND_BOOL: return *(bool *)ptr ? ANY_TRUE : ANY_FALSE;
     case KIND_U8:   return MAKE_ANY_U8(*(uint8_t *)ptr);
     case KIND_U16:  return MAKE_ANY_U16(*(uint16_t *)ptr);
     case KIND_U32:  return MAKE_ANY_U32(*(uint32_t *)ptr);
@@ -254,8 +233,6 @@ Any to_any(void *ptr, const Type *type) {
     case KIND_I64:  return MAKE_ANY_I64(*(int64_t *)ptr);
     case KIND_F32:  return MAKE_ANY_F32(*(float *)ptr);
     case KIND_F64:  return MAKE_ANY_F64(*(double *)ptr);
-    case KIND_SYMBOL:
-    case KIND_TYPE:
     case KIND_PTR:
     case KIND_REF:
         return (Any) { .t.type = type, .val.ptr = *(void **)ptr };
@@ -277,8 +254,6 @@ void from_any(Any any, void *dst) {
     case KIND_I64:  *(int64_t  *)dst = any.val.u64; break;
     case KIND_F32:  *(float    *)dst = any.val.f32; break;
     case KIND_F64:  *(double   *)dst = any.val.f64; break;
-    case KIND_SYMBOL:
-    case KIND_TYPE:
     case KIND_PTR:
     case KIND_REF:
         *(void **)dst = any.val.ptr; break;
@@ -292,10 +267,10 @@ void *rc_alloc(uint32_t size) {
 
 Any string(const char *str) {
     uint32_t len = strlen(str);
-    String *s = rc_alloc(sizeof(String) + len + 1);
+    U8Array *s = rc_alloc(sizeof(U8Array) + len + 1);
     s->length = len;
     memcpy(s->data, str, len + 1);
-    return (Any) { .t.type = &type_ref_string, .val.string_ptr = s };
+    return (Any) { .t.type = type_ref_string, .val.u8_array_ptr = s };
 }
 
 Any cons(Any car, Any cdr) {
@@ -304,16 +279,16 @@ Any cons(Any car, Any cdr) {
     c->cdr = cdr;
     MAYBE_ADDREF(car);
     MAYBE_ADDREF(cdr);
-    return (Any) { .t.type = &type_ref_cons, .val.cons_ptr = c };
+    return (Any) { .t.type = type_ref_cons, .val.cons_ptr = c };
 }
 
 Any car(Any cons) {
-    assert(ANY_TYPE(cons) == &type_ref_cons);
+    assert(ANY_TYPE(cons) == type_ref_cons);
     return cons.val.cons_ptr->car;
 }
 
 Any cdr(Any cons) {
-    assert(ANY_TYPE(cons) == &type_ref_cons);
+    assert(ANY_TYPE(cons) == type_ref_cons);
     return cons.val.cons_ptr->cdr;
 }
 
@@ -328,7 +303,7 @@ Any array_length(Any arr) {
     assert(value_type);
 
     if (arr_type->size < 0) {
-        return MAKE_ANY_U64(arr.val.array_ptr->length);
+        return MAKE_ANY_U64(*(uint32_t *)arr.val.ptr);
     }
     else {
         return MAKE_ANY_U64(arr_type->size / value_type->size);
@@ -348,9 +323,9 @@ Any array_get(Any arr, Any idx) {
     assert(value_type);
 
     if (arr_type->flags & TYPE_FLAG_UNSIZED) {
-        uint32_t len = arr.val.array_ptr->length;
+        uint32_t len = *(uint32_t *)arr.val.ptr;
         assert(i < len);
-        return to_any(arr.val.array_ptr->data + i * value_type->size, value_type);
+        return to_any(arr.val.char_ptr + sizeof(uint32_t) + i * value_type->size, value_type);
     }
     else {
         uint32_t len = arr_type->size / value_type->size;
@@ -372,8 +347,8 @@ Any array_set(Any arr, Any idx, Any val) {
     assert(value_type);
 
     if (arr_type->flags & TYPE_FLAG_UNSIZED) {
-        uint32_t len = arr.val.array_ptr->length;
-        void *ptr = arr.val.array_ptr->data + i * value_type->size;
+        uint32_t len = *(uint32_t *)arr.val.ptr;
+        void *ptr = arr.val.char_ptr + sizeof(uint32_t) + i * value_type->size;
         assert(i < len);
         from_any(val, ptr);
     }
@@ -384,7 +359,7 @@ Any array_set(Any arr, Any idx, Any val) {
         from_any(val, ptr);
     }
 
-    return UNIT;
+    return ANY_UNIT;
 }
 
 
@@ -512,13 +487,13 @@ struct Function {
 
 #define DEFINE_TO_ANY_OP(TYP, typ) \
     case OP_ ## TYP ## _TO_ANY: \
-        *(Any *)(sp - 1) = (Any) { .t.type = &type_ ## typ, .val.typ = sp[-1].typ }; \
+        *(Any *)(sp - 1) = (Any) { .t.type = type_ ## typ, .val.typ = sp[-1].typ }; \
         ++sp; \
         continue;
 
 #define DEFINE_FROM_ANY_OP(TYP, typ) \
     case OP_ANY_TO_ ## TYP: \
-        assert(&type_ ## typ == ANY_TYPE(*(Any *)(sp - 1))); \
+        assert(type_ ## typ == ANY_TYPE(*(Any *)(sp - 1))); \
         sp[-2].typ = ((Any *)(sp - 1))->val.typ; \
         --sp; \
         continue;
@@ -601,7 +576,7 @@ void call(VMCtx *vmcx, Function *fun) {
             continue;
         }
 
-        case OP_UNIT_TO_ANY: *(Any *)(sp) = (Any) { .t.type = &type_unit }; ++sp; continue;
+        case OP_UNIT_TO_ANY: *(Any *)(sp) = ANY_UNIT; ++sp; continue;
         FOR_ALL_PRIM_TYPES(DEFINE_TO_ANY_OP)
         FOR_ALL_PRIM_TYPES(DEFINE_FROM_ANY_OP)
         FOR_ALL_NUM_TYPES(DEFINE_ADD_OP)
@@ -853,50 +828,295 @@ const Type *compile(CompilerCtx *cctx, Any form) {
     case KIND_F64:
         emit_lit_1_word(cctx, form.val.u64);
         return ANY_TYPE(form);
-    case KIND_CONS: {
-        Any head = car(form);
+    case KIND_STRUCT: {
+        if (ANY_TYPE(form) == type_ref_cons) {
+            Any head = car(form);
 
-        if (head.val.symbol /*== if*/) {
-            uint32_t else_label = gen_label(cctx);
-            uint32_t end_label = gen_label(cctx);
+            if (true /*== if*/) {
+                uint32_t else_label = gen_label(cctx);
+                uint32_t end_label = gen_label(cctx);
 
-            Any temp = cdr(form);
-            const Type *cond_type = compile(cctx, car(temp));
-            if (cond_type->kind == KIND_ANY) {
-                emit_u64(cctx, OP_ANY_TO_BOOL);
+                Any temp = cdr(form);
+                const Type *cond_type = compile(cctx, car(temp));
+                if (cond_type->kind == KIND_ANY) {
+                    emit_u64(cctx, OP_ANY_TO_BOOL);
+                }
+                else {
+                    assert(cond_type->kind == KIND_BOOL);
+                }
+                emit_jfalse(cctx, else_label);
+
+                temp = cdr(temp);
+                const Type *then_type = compile(cctx, car(temp));
+                emit_jump(cctx, end_label);
+
+                emit_u64(cctx, else_label);
+                temp = cdr(temp);
+                const Type *else_type = compile(cctx, car(temp));
+
+                emit_u64(cctx, end_label);
+
+                temp = cdr(temp);
+                assert(ANY_KIND(temp) == KIND_UNIT);
+                assert(then_type == else_type);
+                return then_type;
             }
-            else {
-                assert(cond_type->kind == KIND_BOOL);
-            }
-            emit_jfalse(cctx, else_label);
 
-            temp = cdr(temp);
-            const Type *then_type = compile(cctx, car(temp));
-            emit_jump(cctx, end_label);
-
-            emit_u64(cctx, else_label);
-            temp = cdr(temp);
-            const Type *else_type = compile(cctx, car(temp));
-
-            emit_u64(cctx, end_label);
-
-            temp = cdr(temp);
-            assert(ANY_KIND(temp) == KIND_UNIT);
-            assert(then_type == else_type);
-            return then_type;
+            /* call */
+            const Type *fun_type = compile(cctx, head);
+            emit_u64(cctx, OP_CALL);
         }
-
-        /* call */
-        const Type *fun_type = compile(cctx, head);
-        emit_u64(cctx, OP_CALL);
     }
         
     }
 }
 
 
+typedef struct StrSlice StrSlice;
+struct StrSlice {
+    const char *str;
+    uint32_t length;
+};
+
+
+uint32_t StrSlice_hash(StrSlice s) {
+    uint32_t result;
+    MurmurHash3_x86_32(s.str, s.length, 0, &result);
+    return result;
+}
+
+bool StrSlice_equal(StrSlice a, StrSlice b) {
+    return a.length == b.length && !memcmp(a.str, b.str, a.length);
+}
+
+#define EXPAND_INTERFACE
+#define EXPAND_IMPLEMENTATION
+#define NAME SymMap
+#define KEY_TYPE StrSlice
+#define VALUE_TYPE const Symbol *
+#define HASH_FUNC(x) StrSlice_hash(x)
+#define EQUAL_FUNC(x, y) StrSlice_equal(x, y)
+#include "hashtable.h"
+typedef struct SymMap SymMap;
+
+static SymMap symbolmap;
+
+const Symbol *intern_symbol(const char *str, uint32_t length) {
+    StrSlice slice = { str, length };
+    {
+        const Symbol *sym;
+        if (SymMap_get(&symbolmap, slice, &sym)) {
+            return sym;
+        }
+    }
+    Symbol *sym = malloc(sizeof(U8Array) + length + 1);
+    sym->length = length;
+    memcpy(sym->data, str, length);
+    sym->data[length] = 0;
+    slice.str = sym->data;
+    SymMap_put(&symbolmap, slice, sym);
+    return sym;
+}
+
+const Symbol *intern_symbol_str(const char *str) {
+    return intern_symbol(str, strlen(str));
+}
+
+
+
+static bool type_equal(const Type *a, const Type *b) {
+    if (a->kind != b->kind) {
+        return false;
+    }
+    if (a->flags != b->flags) {
+        return false;
+    }
+    if (a->size != b->size) {
+        return false;
+    }
+    if (a->target != b->target) {
+        return false;
+    }
+    if (!!a->fields != !!b->fields) {
+        return false;
+    }
+    if (a->fields) {
+        if (a->fields->length != b->fields->length) {
+            return false;
+        }
+        for (uint32_t i = 0; i < a->fields->length; ++i) {
+            StructField *fa = a->fields->fields + i;
+            StructField *fb = b->fields->fields + i;
+            if (fa->name != fb->name) {
+                return false;
+            }
+            if (fa->type != fb->type) {
+                return false;
+            }
+            if (fa->offset != fb->offset) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static uint32_t hash_type(Type *t) {
+    uint32_t hash = FNV_SEED;
+    hash = fnv1a(&t->kind, sizeof(t->kind), hash);
+    hash = fnv1a(&t->flags, sizeof(t->flags), hash);
+    hash = fnv1a(&t->size, sizeof(t->size), hash);
+    hash = fnv1a(&t->salt, sizeof(t->salt), hash);
+    if (t->target) {
+        hash = fnv1a(&t->target->hash, sizeof(t->target->hash), hash);
+    }
+    if (t->fields) {
+        for (uint32_t i = 0; i < t->fields->length; ++i) {
+            StructField *f = t->fields->fields + i;
+            hash = fnv1a(&f->name, sizeof(f->name), hash);
+            hash = fnv1a(&f->type->hash, sizeof(t->target->hash), hash);
+            hash = fnv1a(&f->offset, sizeof(f->offset), hash);
+        }
+    }
+    return hash;
+}
+
+#define EXPAND_INTERFACE
+#define EXPAND_IMPLEMENTATION
+#define NAME TypeMap
+#define KEY_TYPE uint32_t
+#define VALUE_TYPE const Type *
+#define HASH_FUNC(x) (x)
+#define EQUAL_FUNC(x, y) ((x) == (y))
+#include "hashtable.h"
+typedef struct TypeMap TypeMap;
+
+static TypeMap typemap;
+
+const Type *intern_type(Type *type) {
+    for (uint32_t salt = 0; salt < 10000; ++salt) {
+        type->salt = salt;
+        type->hash = hash_type(type);
+
+        const Type *found;
+        if (!TypeMap_get(&typemap, type->hash, &found)) {
+            Type *new_type = malloc(sizeof(Type));
+            *new_type = *type;
+            TypeMap_put(&typemap, new_type->hash, new_type);
+            return new_type;
+        }
+        if (type_equal(type, found)) {
+            return found;
+        }
+    }
+
+    assert(0 && "should not happen");
+    return NULL;
+}
+
+const Type *prim_type(uint32_t kind, uint32_t size) {
+    Type type = { .kind = kind,.size = size };
+    return intern_type(&type);
+}
+
+StructFieldArray *struct_field_array(uint32_t field_count, StructField *fields) {
+    StructFieldArray *field_array = malloc(sizeof(StructFieldArray) + sizeof(StructField) * field_count);
+    field_array->length = field_count;
+    memcpy(field_array->fields, fields, sizeof(StructField) * field_count);
+    return field_array;
+}
+
+const Type *struct_type(uint32_t size, uint32_t field_count, StructField *fields) {
+    StructFieldArray *field_array = struct_field_array(field_count, fields);
+    Type type = { .kind = KIND_STRUCT, .size = size, .fields = field_array };
+    if (field_count > 0 && fields[field_count - 1].type->flags & TYPE_FLAG_UNSIZED) {
+        type.flags |= TYPE_FLAG_UNSIZED;
+    }
+    return intern_type(&type);
+}
+
+const Type *array_type(const Type *elem_type) {
+    Type type = { .kind = KIND_ARRAY, .flags = TYPE_FLAG_UNSIZED, .size = 0, .target = elem_type };
+    return intern_type(&type);
+}
+
+const Type *array_type_sized(const Type *elem_type, uint32_t elem_count) {
+    Type type = { .kind = KIND_ARRAY, .size = elem_type->size * elem_count, .target = elem_type };
+    return intern_type(&type);
+}
+
+const Type *ptr_type(const Type *elem_type) {
+    Type type = { .kind = KIND_PTR, .size = sizeof(void *), .target = elem_type };
+    return intern_type(&type);
+}
+
+const Type *ref_type(const Type *elem_type) {
+    Type type = { .kind = KIND_REF, .size = sizeof(void *), .target = elem_type };
+    return intern_type(&type);
+}
+
+void init_globals(void) {
+    SymMap_init(&symbolmap, 512);
+
+    TypeMap_init(&typemap, 512);
+
+    Type *type = calloc(1, sizeof(Type));
+    type->kind = KIND_STRUCT;
+    type->size = sizeof(Type);
+    type->hash = 0x12345678; /* we have to invent a hash here, since this type is self-recursive and can't be properly hashed */
+    TypeMap_put(&typemap, type->hash, type);
+
+    type_type = type;
+    type_ptr_type = ptr_type(type_type);
+
+    type_any = prim_type(KIND_ANY, sizeof(Any));
+
+    type_unit = prim_type(KIND_UNIT, 0);
+    type_b32 = prim_type(KIND_BOOL, sizeof(bool));
+
+    type_u8 = prim_type(KIND_U8, sizeof(uint8_t));
+    type_u16 = prim_type(KIND_U16, sizeof(uint16_t));
+    type_u32 = prim_type(KIND_U32, sizeof(uint32_t));
+    type_u64 = prim_type(KIND_U64, sizeof(uint64_t));
+
+    type_i8 = prim_type(KIND_I8, sizeof(int8_t));
+    type_i16 = prim_type(KIND_I16, sizeof(int16_t));
+    type_i32 = prim_type(KIND_I32, sizeof(int32_t));
+    type_i64 = prim_type(KIND_I64, sizeof(int64_t));
+
+    type_f32 = prim_type(KIND_F32, sizeof(float));
+    type_f64 = prim_type(KIND_F64, sizeof(double));
+
+    type_ptr_symbol = ptr_type(array_type(type_u8));
+    type_ref_string = ref_type(array_type(type_u8));
+
+    const Type *type_cons = struct_type(sizeof(Cons), 2, (StructField[]) {
+        { .name = intern_symbol_str("car"), .type = type_any, .offset = offsetof(Cons, car) },
+        { .name = intern_symbol_str("cdr"), .type = type_any, .offset = offsetof(Cons, cdr) },
+    });
+    type_ref_cons = ref_type(type_cons);
+
+    /* complete Type type */
+    const Type *type_struct_field = struct_type(sizeof(StructField), 3, (StructField[]) {
+        { .name = intern_symbol_str("name"), .type = type_ptr_symbol, .offset = offsetof(StructField, name) },
+        { .name = intern_symbol_str("type"), .type = type_ptr_type, .offset = offsetof(StructField, type) },
+        { .name = intern_symbol_str("offset"), .type = type_u32, .offset = offsetof(StructField, offset) },
+    });
+    type->fields = struct_field_array(5, (StructField[]) {
+        { .name = intern_symbol_str("kind"), .type = type_u32, .offset = offsetof(Type, kind) },
+        { .name = intern_symbol_str("flags"), .type = type_u32, .offset = offsetof(Type, flags) },
+        { .name = intern_symbol_str("size"), .type = type_u32, .offset = offsetof(Type, size) },
+        { .name = intern_symbol_str("target"), .type = type_ptr_type, .offset = offsetof(Type, target) },
+        { .name = intern_symbol_str("fields"), .type = ptr_type(array_type(type_struct_field)), .offset = offsetof(Type, fields) },
+    });
+}
 
 int main() {
+    init_globals();
+
+    assert(intern_symbol_str("foo") == intern_symbol_str("foo"));
+    assert(prim_type(KIND_U32, sizeof(uint32_t)) == prim_type(KIND_U32, sizeof(uint32_t)));
+
     CompilerCtx *cctx = calloc(1, sizeof(CompilerCtx));
 
     emit_lit_7_bytes(cctx, 10);
