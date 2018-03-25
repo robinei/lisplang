@@ -15,6 +15,7 @@ typedef struct Symbol Symbol;
 typedef struct String String;
 typedef struct Cons Cons;
 typedef struct Array Array;
+typedef struct Slice Slice;
 
 typedef union Word Word;
 union Word {
@@ -50,13 +51,19 @@ union Word {
 
 typedef struct Any Any;
 struct Any {
-    const Type *type;
+    union {
+        const Type *type;
+        uintptr_t bits;
+    } t;
     Word val;
 };
 
 
-typedef enum TypeKind TypeKind;
-enum TypeKind {
+#define ANY_KIND_BITS 5
+#define ANY_KIND(any) ((any).t.bits & ANY_KIND_BITS)
+#define ANY_TYPE(any) (ANY_KIND(any) != KIND_REF_SLICE ? (const Type *)((any).t.bits & ~ANY_KIND_BITS) : NULL)
+
+enum {
     KIND_ANY,
 
     /* primitive types that can be passed directly as Any */
@@ -76,11 +83,17 @@ enum TypeKind {
     KIND_TYPE,
     KIND_PTR,
     KIND_REF, /* regular pointer, but the pointed to value is preceded by a 32 bit reference count */
+    KIND_REF_SLICE, /* regular pointer to ref-counted array.
+                       specially handled by storing offset/length in the Any type field.
+                       so only the kind is available from there, and the type pointer must be
+                       retrieved from the boxed array object */
 
-    /* the following types must be wrapped in a PTR or RC_PTR to be passed as Any */
+    /* the following types must be wrapped in a PTR or REF to be passed as Any.
+       (except STRUCT or ARRAY, if they are 8 bytes or less in size. */
+    KIND_ARRAY,
+    KIND_SLICE,
     KIND_STRING,
     KIND_CONS,
-    KIND_ARRAY,
     KIND_STRUCT,
 };
 
@@ -90,26 +103,35 @@ enum TypeKind {
 #define IS_REAL_KIND(kind) ((kind) == KIND_F32 || (kind) == KIND_F64)
 #define IS_PTR_KIND(kind) ((kind) == KIND_PTR || (kind) == KIND_REF)
 
-typedef enum TypeFlags TypeFlags;
-enum TypeFlags {
-    FLAG_UNSIZED
+enum {
+    TYPE_FLAG_UNSIZED
+};
+
+typedef struct StructField StructField;
+struct StructField {
+    Symbol *name;
+    Type *type;
+    uint32_t offset;
 };
 
 struct Type {
-    TypeKind kind;
-    TypeFlags flags;
-    size_t size;
+    uint32_t kind;
+    uint32_t flags;
+    uint32_t size;
     const Type *target;
+
+    uint32_t field_count;
+    StructField *fields;
 };
 
 
 struct Symbol {
-    size_t length;
+    uint32_t length;
     char data[];
 };
 
 struct String {
-    size_t length;
+    uint32_t length;
     char data[];
 };
 
@@ -119,8 +141,14 @@ struct Cons {
 };
 
 struct Array {
-    size_t length;
+    uint32_t length;
     char data[];
+};
+
+struct Slice {
+    Array *array;
+    uint32_t offset;
+    uint32_t length;
 };
 
 
@@ -131,60 +159,60 @@ typedef Any(*FunPtr3)(Any a, Any b, Any c);
 typedef Any(*FunPtr4)(Any a, Any b, Any c, Any d);
 
 
-const Type type_any = { KIND_ANY, 0, sizeof(Any) };
+const Type type_any = { .kind = KIND_ANY, .size = sizeof(Any) };
 
-const Type type_unit = { KIND_UNIT, 0, 0 };
-const Type type_b32 = { KIND_BOOL, 0, sizeof(bool) };
+const Type type_unit = { .kind = KIND_UNIT };
+const Type type_b32 = { .kind = KIND_BOOL, .size = sizeof(bool) };
 
-const Type type_u8 = { KIND_U8, 0, sizeof(uint8_t) };
-const Type type_u16 = { KIND_U16, 0, sizeof(uint16_t) };
-const Type type_u32 = { KIND_U32, 0, sizeof(uint32_t) };
-const Type type_u64 = { KIND_U64, 0, sizeof(uint64_t) };
+const Type type_u8 = { .kind = KIND_U8, .size = sizeof(uint8_t) };
+const Type type_u16 = { .kind = KIND_U16, .size = sizeof(uint16_t) };
+const Type type_u32 = { .kind = KIND_U32, .size = sizeof(uint32_t) };
+const Type type_u64 = { .kind = KIND_U64, .size = sizeof(uint64_t) };
 
-const Type type_i8 = { KIND_I8, 0, sizeof(int8_t) };
-const Type type_i16 = { KIND_I16, 0, sizeof(int16_t) };
-const Type type_i32 = { KIND_I32, 0, sizeof(int32_t) };
-const Type type_i64 = { KIND_I64, 0, sizeof(int64_t) };
+const Type type_i8 = { .kind = KIND_I8, .size = sizeof(int8_t) };
+const Type type_i16 = { .kind = KIND_I16, .size = sizeof(int16_t) };
+const Type type_i32 = { .kind = KIND_I32, .size = sizeof(int32_t) };
+const Type type_i64 = { .kind = KIND_I64, .size = sizeof(int64_t) };
 
-const Type type_f32 = { KIND_F32, 0, sizeof(float) };
-const Type type_f64 = { KIND_F64, 0, sizeof(double) };
+const Type type_f32 = { .kind = KIND_F32, .size = sizeof(float) };
+const Type type_f64 = { .kind = KIND_F64, .size = sizeof(double) };
 
-const Type type_type = { KIND_TYPE, 0, sizeof(void *) };
+const Type type_type = { .kind = KIND_TYPE, .size = sizeof(void *) };
 
-const Type type_string = { KIND_STRING, 0, FLAG_UNSIZED };
-const Type type_ref_string = { KIND_REF, 0, sizeof(void *), &type_string };
+const Type type_string = { .kind = KIND_STRING, .flags = TYPE_FLAG_UNSIZED };
+const Type type_ref_string = { .kind = KIND_REF, .size = sizeof(void *), .target = &type_string };
 
-const Type type_cons = { KIND_CONS, 0, sizeof(Cons) };
-const Type type_ref_cons = { KIND_REF, 0, sizeof(void *), &type_cons };
+const Type type_cons = { .kind = KIND_CONS, .size = sizeof(Cons) };
+const Type type_ref_cons = { .kind = KIND_REF, .size = sizeof(void *), .target = &type_cons };
 
-const Type type_slice_any = { KIND_ARRAY, FLAG_UNSIZED, 0, &type_any };
-const Type type_ref_slice_any = { KIND_REF, 0, sizeof(void *), &type_slice_any };
+const Type type_slice_any = { .kind = KIND_ARRAY, .flags = TYPE_FLAG_UNSIZED, .target = &type_any };
+const Type type_ref_slice_any = { .kind = KIND_REF, .size = sizeof(void *), .target = &type_slice_any };
 
 
-const Any UNIT = { .type = &type_unit };
-const Any TRUE = { .type = &type_b32, .val.b32 = true };
-const Any FALSE = { .type = &type_b32, .val.b32 = false };
+const Any UNIT = { .t.type = &type_unit };
+const Any TRUE = { .t.type = &type_b32, .val.b32 = true };
+const Any FALSE = { .t.type = &type_b32, .val.b32 = false };
 
-#define ANY_U8(x) ((Any) { .type = &type_u8, .val.u8 = (x) })
-#define ANY_U16(x) ((Any) { .type = &type_u16, .val.u16 = (x) })
-#define ANY_U32(x) ((Any) { .type = &type_u32, .val.u32 = (x) })
-#define ANY_U64(x) ((Any) { .type = &type_u64, .val.u64 = (x) })
+#define MAKE_ANY_U8(x) ((Any) { .t.type = &type_u8, .val.u8 = (x) })
+#define MAKE_ANY_U16(x) ((Any) { .t.type = &type_u16, .val.u16 = (x) })
+#define MAKE_ANY_U32(x) ((Any) { .t.type = &type_u32, .val.u32 = (x) })
+#define MAKE_ANY_U64(x) ((Any) { .t.type = &type_u64, .val.u64 = (x) })
 
-#define ANY_I8(x) ((Any) { .type = &type_i8, .val.i8 = (x) })
-#define ANY_I16(x) ((Any) { .type = &type_i16, .val.i16 = (x) })
-#define ANY_I32(x) ((Any) { .type = &type_i32, .val.i32 = (x) })
-#define ANY_I64(x) ((Any) { .type = &type_i64, .val.i64 = (x) })
+#define MAKE_ANY_I8(x) ((Any) { .t.type = &type_i8, .val.i8 = (x) })
+#define MAKE_ANY_I16(x) ((Any) { .t.type = &type_i16, .val.i16 = (x) })
+#define MAKE_ANY_I32(x) ((Any) { .t.type = &type_i32, .val.i32 = (x) })
+#define MAKE_ANY_I64(x) ((Any) { .t.type = &type_i64, .val.i64 = (x) })
 
-#define ANY_F32(x) ((Any) { .type = &type_f32, .val.f32 = (x) })
-#define ANY_F64(x) ((Any) { .type = &type_f64, .val.f64 = (x) })
+#define MAKE_ANY_F32(x) ((Any) { .t.type = &type_f32, .val.f32 = (x) })
+#define MAKE_ANY_F64(x) ((Any) { .t.type = &type_f64, .val.f64 = (x) })
 
-#define ANY_TYPE(x) ((Any) { .type = &type_type, .val.type = (x) })
+#define MAKE_ANY_TYPE(x) ((Any) { .t.type = &type_type, .val.type = (x) })
 
 #define REFCOUNT(ptr) (((uint32_t *)(ptr))[-1])
-#define MAYBE_ADDREF(any) ((any).type->kind == KIND_REF && ++REFCOUNT((any).val.ptr))
+#define MAYBE_ADDREF(any) (ANY_KIND(any) == KIND_REF && ++REFCOUNT((any).val.ptr))
 
 uint64_t to_u64(Any num) {
-    switch (num.type->kind) {
+    switch (ANY_KIND(num)) {
     case KIND_U8: return num.val.u8;
     case KIND_U16: return num.val.u16;
     case KIND_U32: return num.val.u32;
@@ -197,16 +225,16 @@ uint64_t to_u64(Any num) {
     }
 }
 
-size_t to_size(Any num) {
-    switch (num.type->kind) {
+uint32_t to_u32(Any num) {
+    switch (ANY_KIND(num)) {
     case KIND_U8: return num.val.u8;
     case KIND_U16: return num.val.u16;
     case KIND_U32: return num.val.u32;
-    case KIND_U64: assert(num.val.u64 < SIZE_MAX); return (size_t)num.val.u64;
+    case KIND_U64: assert(num.val.u64 <= UINT32_MAX); return (uint32_t)num.val.u64;
     case KIND_I8: assert(num.val.i8 >= 0); return num.val.i8;
     case KIND_I16: assert(num.val.i16 >= 0); return num.val.i16;
     case KIND_I32: assert(num.val.i32 >= 0); return num.val.i32;
-    case KIND_I64: assert(num.val.i64 >= 0 && num.val.i64 < SIZE_MAX); return (size_t)num.val.i64;
+    case KIND_I64: assert(num.val.i64 >= 0 && num.val.i64 <= (int64_t)UINT32_MAX); return (uint32_t)num.val.i64;
     default: assert(0 && "non-integral value"); return 0;
     }
 }
@@ -216,26 +244,26 @@ Any to_any(void *ptr, const Type *type) {
     case KIND_ANY:  return *(Any *)ptr;
     case KIND_UNIT: return UNIT;
     case KIND_BOOL: return *(bool *)ptr ? TRUE : FALSE;
-    case KIND_U8:   return ANY_U8(*(uint8_t *)ptr);
-    case KIND_U16:  return ANY_U16(*(uint16_t *)ptr);
-    case KIND_U32:  return ANY_U32(*(uint32_t *)ptr);
-    case KIND_U64:  return ANY_U64(*(uint64_t *)ptr);
-    case KIND_I8:   return ANY_I8(*(int8_t *)ptr);
-    case KIND_I16:  return ANY_I16(*(int16_t *)ptr);
-    case KIND_I32:  return ANY_I32(*(int32_t *)ptr);
-    case KIND_I64:  return ANY_I64(*(int64_t *)ptr);
-    case KIND_F32:  return ANY_F32(*(float *)ptr);
-    case KIND_F64:  return ANY_F64(*(double *)ptr);
+    case KIND_U8:   return MAKE_ANY_U8(*(uint8_t *)ptr);
+    case KIND_U16:  return MAKE_ANY_U16(*(uint16_t *)ptr);
+    case KIND_U32:  return MAKE_ANY_U32(*(uint32_t *)ptr);
+    case KIND_U64:  return MAKE_ANY_U64(*(uint64_t *)ptr);
+    case KIND_I8:   return MAKE_ANY_I8(*(int8_t *)ptr);
+    case KIND_I16:  return MAKE_ANY_I16(*(int16_t *)ptr);
+    case KIND_I32:  return MAKE_ANY_I32(*(int32_t *)ptr);
+    case KIND_I64:  return MAKE_ANY_I64(*(int64_t *)ptr);
+    case KIND_F32:  return MAKE_ANY_F32(*(float *)ptr);
+    case KIND_F64:  return MAKE_ANY_F64(*(double *)ptr);
     case KIND_SYMBOL:
     case KIND_TYPE:
     case KIND_PTR:
     case KIND_REF:
-        return (Any) { .type = type, .val.ptr = *(void **)ptr };
+        return (Any) { .t.type = type, .val.ptr = *(void **)ptr };
     }
 }
 
 void from_any(Any any, void *dst) {
-    switch (any.type->kind) {
+    switch (ANY_KIND(any)) {
     case KIND_ANY:  *(Any *)dst = any; break;
     case KIND_UNIT: break; /* zero size, so no write */
     case KIND_BOOL: *(bool     *)dst = any.val.b32; break;
@@ -267,7 +295,7 @@ Any string(const char *str) {
     String *s = rc_alloc(sizeof(String) + len + 1);
     s->length = len;
     memcpy(s->data, str, len + 1);
-    return (Any) { .type = &type_ref_string, .val.string_ptr = s };
+    return (Any) { .t.type = &type_ref_string, .val.string_ptr = s };
 }
 
 Any cons(Any car, Any cdr) {
@@ -276,23 +304,23 @@ Any cons(Any car, Any cdr) {
     c->cdr = cdr;
     MAYBE_ADDREF(car);
     MAYBE_ADDREF(cdr);
-    return (Any) { .type = &type_ref_cons, .val.cons_ptr = c };
+    return (Any) { .t.type = &type_ref_cons, .val.cons_ptr = c };
 }
 
 Any car(Any cons) {
-    assert(cons.type == &type_ref_cons);
+    assert(ANY_TYPE(cons) == &type_ref_cons);
     return cons.val.cons_ptr->car;
 }
 
 Any cdr(Any cons) {
-    assert(cons.type == &type_ref_cons);
+    assert(ANY_TYPE(cons) == &type_ref_cons);
     return cons.val.cons_ptr->cdr;
 }
 
 Any array_length(Any arr) {
-    assert(IS_PTR_KIND(arr.type->kind));
+    assert(IS_PTR_KIND(ANY_KIND(arr)));
     
-    const Type *arr_type = arr.type->target;
+    const Type *arr_type = ANY_TYPE(arr)->target;
     assert(arr_type);
     assert(arr_type->kind == KIND_ARRAY);
     
@@ -300,57 +328,57 @@ Any array_length(Any arr) {
     assert(value_type);
 
     if (arr_type->size < 0) {
-        return ANY_U64(arr.val.array_ptr->length);
+        return MAKE_ANY_U64(arr.val.array_ptr->length);
     }
     else {
-        return ANY_U64(arr_type->size / value_type->size);
+        return MAKE_ANY_U64(arr_type->size / value_type->size);
     }
 }
 
 Any array_get(Any arr, Any idx) {
-    size_t i = to_size(idx);
+    uint32_t i = to_u32(idx);
 
-    assert(IS_PTR_KIND(arr.type->kind));
+    assert(IS_PTR_KIND(ANY_KIND(arr)));
     
-    const Type *arr_type = arr.type->target;
+    const Type *arr_type = ANY_TYPE(arr)->target;
     assert(arr_type);
     assert(arr_type->kind == KIND_ARRAY);
 
     const Type *value_type = arr_type->target;
     assert(value_type);
 
-    if (arr_type->flags & FLAG_UNSIZED) {
-        size_t len = arr.val.array_ptr->length;
+    if (arr_type->flags & TYPE_FLAG_UNSIZED) {
+        uint32_t len = arr.val.array_ptr->length;
         assert(i < len);
         return to_any(arr.val.array_ptr->data + i * value_type->size, value_type);
     }
     else {
-        size_t len = arr_type->size / value_type->size;
+        uint32_t len = arr_type->size / value_type->size;
         assert(i < len);
         return to_any((char *)arr.val.ptr + i * value_type->size, value_type);
     }
 }
 
 Any array_set(Any arr, Any idx, Any val) {
-    size_t i = to_size(idx);
+    uint32_t i = to_u32(idx);
 
-    assert(IS_PTR_KIND(arr.type->kind));
+    assert(IS_PTR_KIND(ANY_KIND(arr)));
 
-    const Type *arr_type = arr.type->target;
+    const Type *arr_type = ANY_TYPE(arr)->target;
     assert(arr_type);
     assert(arr_type->kind == KIND_ARRAY);
 
     const Type *value_type = arr_type->target;
     assert(value_type);
 
-    if (arr_type->flags & FLAG_UNSIZED) {
-        size_t len = arr.val.array_ptr->length;
+    if (arr_type->flags & TYPE_FLAG_UNSIZED) {
+        uint32_t len = arr.val.array_ptr->length;
         void *ptr = arr.val.array_ptr->data + i * value_type->size;
         assert(i < len);
         from_any(val, ptr);
     }
     else {
-        size_t len = arr_type->size / value_type->size;
+        uint32_t len = arr_type->size / value_type->size;
         void *ptr = (char *)arr.val.ptr + i * value_type->size;
         assert(i < len);
         from_any(val, ptr);
@@ -484,13 +512,13 @@ struct Function {
 
 #define DEFINE_TO_ANY_OP(TYP, typ) \
     case OP_ ## TYP ## _TO_ANY: \
-        *(Any *)(sp - 1) = (Any) { .type = &type_ ## typ, .val.typ = sp[-1].typ }; \
+        *(Any *)(sp - 1) = (Any) { .t.type = &type_ ## typ, .val.typ = sp[-1].typ }; \
         ++sp; \
         continue;
 
 #define DEFINE_FROM_ANY_OP(TYP, typ) \
     case OP_ANY_TO_ ## TYP: \
-        assert(&type_ ## typ == ((Any *)(sp - 1))->type); \
+        assert(&type_ ## typ == ANY_TYPE(*(Any *)(sp - 1))); \
         sp[-2].typ = ((Any *)(sp - 1))->val.typ; \
         --sp; \
         continue;
@@ -573,7 +601,7 @@ void call(VMCtx *vmcx, Function *fun) {
             continue;
         }
 
-        case OP_UNIT_TO_ANY: *(Any *)(sp) = (Any) { .type = &type_unit }; ++sp; continue;
+        case OP_UNIT_TO_ANY: *(Any *)(sp) = (Any) { .t.type = &type_unit }; ++sp; continue;
         FOR_ALL_PRIM_TYPES(DEFINE_TO_ANY_OP)
         FOR_ALL_PRIM_TYPES(DEFINE_FROM_ANY_OP)
         FOR_ALL_NUM_TYPES(DEFINE_ADD_OP)
@@ -801,30 +829,30 @@ static void print_code(CompilerCtx *cctx) {
 
 
 const Type *compile(CompilerCtx *cctx, Any form) {
-    switch (form.type->kind) {
+    switch (ANY_KIND(form)) {
     case KIND_UNIT:
-        return form.type;
+        return ANY_TYPE(form);
     case KIND_BOOL:
         emit_lit_7_bytes(cctx, form.val.b32);
-        return form.type;
+        return ANY_TYPE(form);
     case KIND_U8:
     case KIND_I8:
         emit_lit_7_bytes(cctx, form.val.u8);
-        return form.type;
+        return ANY_TYPE(form);
     case KIND_U16:
     case KIND_I16:
         emit_lit_7_bytes(cctx, form.val.u16);
-        return form.type;
+        return ANY_TYPE(form);
     case KIND_U32:
     case KIND_I32:
     case KIND_F32:
         emit_lit_1_word(cctx, form.val.u32);
-        return form.type;
+        return ANY_TYPE(form);
     case KIND_U64:
     case KIND_I64:
     case KIND_F64:
         emit_lit_1_word(cctx, form.val.u64);
-        return form.type;
+        return ANY_TYPE(form);
     case KIND_CONS: {
         Any head = car(form);
 
@@ -853,7 +881,7 @@ const Type *compile(CompilerCtx *cctx, Any form) {
             emit_u64(cctx, end_label);
 
             temp = cdr(temp);
-            assert(temp.type->kind == KIND_UNIT);
+            assert(ANY_KIND(temp) == KIND_UNIT);
             assert(then_type == else_type);
             return then_type;
         }
