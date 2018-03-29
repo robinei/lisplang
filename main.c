@@ -8,13 +8,19 @@
 #include "murmur3.h"
 
 
+typedef union Word Word;
+typedef struct Any Any;
 typedef struct Type Type;
 typedef struct Cons Cons;
 typedef struct U8Array U8Array;
 typedef U8Array Symbol;
 typedef U8Array String;
 
-typedef union Word Word;
+typedef Any(*FunPtr0)(void);
+typedef Any(*FunPtr1)(Any a);
+typedef Any(*FunPtr2)(Any a, Any b);
+typedef Any(*FunPtr3)(Any a, Any b, Any c);
+
 union Word {
     struct {
         uint64_t op : 8;
@@ -40,12 +46,17 @@ union Word {
 
     void *ptr;
     char *char_ptr;
+    const Symbol *symbol_ptr;
     Cons *cons_ptr;
     U8Array *u8_array_ptr;
+
+    FunPtr0 fun0;
+    FunPtr1 fun1;
+    FunPtr2 fun2;
+    FunPtr3 fun3;
 };
 
 
-typedef struct Any Any;
 struct Any {
     union {
         const Type *type;
@@ -62,7 +73,6 @@ struct Any {
 enum {
     KIND_ANY,
 
-    /* primitive types that can be passed directly as Any */
     KIND_UNIT,
     KIND_BOOL,
     KIND_U8,
@@ -76,16 +86,23 @@ enum {
     KIND_F32,
     KIND_F64,
     KIND_PTR,
-    KIND_REF, /* regular pointer, but the pointed to value is preceded by a 32 bit reference count */
-    KIND_REF_SLICE, /* regular pointer to ref-counted array.
-                       specially handled by storing offset/length in the Any type field.
-                       so only the kind is available from there, and the type pointer must be
-                       retrieved from the boxed array object */
 
-    /* the following types must be wrapped in a PTR or REF to be passed as Any,
+    /* regular pointer, but the pointed to value is preceded by a 32 bit reference count */
+    KIND_REF,
+
+    /* regular pointer to ref-counted array.
+       specially handled by storing offset/length in the Any type field.
+       so only the kind is available from there, and the type pointer must be
+       retrieved from the boxed array object */
+    KIND_REF_SLICE,
+
+    /* ARRAYs and STRUCTs must be wrapped in a PTR or REF to be passed as Any,
        if they are larger than 8 bytes. */
     KIND_ARRAY,
     KIND_STRUCT,
+
+    KIND_BUILTIN,
+    KIND_FUN,
 };
 
 #define IS_UNSIGNED_KIND(kind) ((kind) >= KIND_U8 && (kind) <= KIND_U64)
@@ -99,28 +116,40 @@ enum {
 };
 
 typedef struct StructField StructField;
-struct StructField {
-    const Symbol *name;
-    const Type *type;
-    uint32_t offset;
-};
-
 typedef struct StructFieldArray StructFieldArray;
-struct StructFieldArray {
-    uint32_t length;
-    StructField fields[];
-};
+
+typedef struct FunParam FunParam;
+typedef struct FunParamArray FunParamArray;
 
 struct Type {
     uint32_t kind;
     uint32_t flags;
     uint32_t size;
+
     uint32_t salt; /* used to make sure we can get a unique hash for each type */
     uint32_t hash; /* hash of this type. this field is not itself hashed! */
 
-    const Type *target;
-
+    const Type *target; /* for PTR, REF and ARRAY types */
     StructFieldArray *fields;
+    FunParamArray *params;
+};
+
+struct FunParam {
+    const Type *type;
+};
+struct FunParamArray {
+    uint32_t length;
+    FunParam params[];
+};
+
+struct StructField {
+    const Symbol *name;
+    const Type *type;
+    uint32_t offset;
+};
+struct StructFieldArray {
+    uint32_t length;
+    StructField fields[];
 };
 
 
@@ -134,12 +163,10 @@ struct U8Array {
     uint8_t data[];
 };
 
-
-typedef Any(*FunPtr0)(void);
-typedef Any(*FunPtr1)(Any a);
-typedef Any(*FunPtr2)(Any a, Any b);
-typedef Any(*FunPtr3)(Any a, Any b, Any c);
-typedef Any(*FunPtr4)(Any a, Any b, Any c, Any d);
+typedef struct Function Function;
+struct Function {
+    Word *code;
+};
 
 
 const Type *type_type;
@@ -166,6 +193,23 @@ const Type *type_f64;
 const Type *type_ptr_symbol;
 const Type *type_ref_string;
 const Type *type_ref_cons;
+
+const Symbol *symbol_if;
+const Symbol *symbol_let;
+const Symbol *symbol_quote;
+const Symbol *symbol_fun;
+const Symbol *symbol_def;
+const Symbol *symbol_do;
+const Symbol *symbol_plus;
+const Symbol *symbol_minus;
+const Symbol *symbol_mul;
+const Symbol *symbol_div;
+const Symbol *symbol_not;
+const Symbol *symbol_eq;
+const Symbol *symbol_lt;
+const Symbol *symbol_gt;
+const Symbol *symbol_lteq;
+const Symbol *symbol_gteq;
 
 
 #define ANY_UNIT ((Any) { .t.type = type_unit })
@@ -292,6 +336,15 @@ Any cdr(Any cons) {
     return cons.val.cons_ptr->cdr;
 }
 
+uint32_t list_length(Any lst) {
+    uint32_t len = 0;
+    while (ANY_KIND(lst) != KIND_UNIT) {
+        ++len;
+        lst = cdr(lst);
+    }
+    return len;
+}
+
 Any array_length(Any arr) {
     assert(IS_PTR_KIND(ANY_KIND(arr)));
     
@@ -394,7 +447,6 @@ Any array_set(Any arr, Any idx, Any val) {
 
 
 typedef struct VMCtx VMCtx;
-typedef struct Function Function;
 
 #define DEFINE_ADD_OP_ENUMS(TYP, typ) OP_ADD_ ## TYP,
 #define DEFINE_SUB_OP_ENUMS(TYP, typ) OP_SUB_ ## TYP,
@@ -417,6 +469,12 @@ enum {
     OP_TCALL, /* tail call. can be used in tail position instead of RET */
     OP_CALL,
     OP_RET,
+
+    /* callable Any -> Any builtin C function */
+    OP_CALL_BUILTIN_0,
+    OP_CALL_BUILTIN_1,
+    OP_CALL_BUILTIN_2,
+    OP_CALL_BUILTIN_3,
 
     OP_DUP,
     OP_PRINT,
@@ -466,10 +524,6 @@ enum {
 struct VMCtx {
     Word *stack;
     Word *sp;
-};
-
-struct Function {
-    Word *code;
 };
 
 
@@ -543,6 +597,11 @@ void call(VMCtx *vmcx, Function *fun) {
         case OP_RET:
             vmcx->sp = sp;
             return; /* since we juse the C call stack we just return */
+
+        case OP_CALL_BUILTIN_0: *(Any *)(sp) = sp->fun0(); ++sp; continue;
+        case OP_CALL_BUILTIN_1: *(Any *)(sp - 2) = sp->fun1(*(Any *)(sp - 2)); --sp; continue;
+        case OP_CALL_BUILTIN_2: *(Any *)(sp - 4) = sp->fun2(*(Any *)(sp - 4), *(Any *)(sp - 2)); sp -= 3; continue;
+        case OP_CALL_BUILTIN_3: *(Any *)(sp - 6) = sp->fun3(*(Any *)(sp - 6), *(Any *)(sp - 4), *(Any *)(sp - 2)); sp -= 5; continue;
 
         case OP_DUP: *sp++ = sp[-1]; continue;
         case OP_PRINT: --sp; printf("%llu\n", sp->u64); continue;
@@ -802,8 +861,26 @@ static void print_code(CompilerCtx *cctx) {
     }
 }
 
+typedef struct CodeSegment CodeSegment;
+struct CodeSegment {
+    uint32_t length;
+    Word code[];
+};
 
-const Type *compile(CompilerCtx *cctx, Any form) {
+static CodeSegment *cut_code_from(CompilerCtx *cctx, uint32_t from_index) {
+    uint32_t len = cctx->code_used - from_index;
+    CodeSegment *seg = malloc(sizeof(CodeSegment) + sizeof(Word) * len);
+    seg->length = len;
+    memcpy(seg->code, cctx->code + from_index, sizeof(Word) * len);
+    cctx->code_used = from_index;
+    return seg;
+}
+
+static void paste_code(CompilerCtx *cctx, CodeSegment *seg) {
+    emit_words(cctx, seg->code, seg->length);
+}
+
+const Type *compile(CompilerCtx *cctx, Any form, const Type *coerce_to) {
     switch (ANY_KIND(form)) {
     case KIND_UNIT:
         return ANY_TYPE(form);
@@ -832,39 +909,70 @@ const Type *compile(CompilerCtx *cctx, Any form) {
         if (ANY_TYPE(form) == type_ref_cons) {
             Any head = car(form);
 
-            if (true /*== if*/) {
-                uint32_t else_label = gen_label(cctx);
-                uint32_t end_label = gen_label(cctx);
+            if (ANY_TYPE(head) == type_ptr_symbol) {
+                if (head.val.symbol_ptr == symbol_if) {
+                    uint32_t else_label = gen_label(cctx);
+                    uint32_t end_label = gen_label(cctx);
 
-                Any temp = cdr(form);
-                const Type *cond_type = compile(cctx, car(temp));
-                if (cond_type->kind == KIND_ANY) {
-                    emit_u64(cctx, OP_ANY_TO_BOOL);
+                    Any temp = cdr(form);
+                    const Type *cond_type = compile(cctx, car(temp), type_b32);
+                    if (cond_type->kind == KIND_ANY) {
+                        emit_u64(cctx, OP_ANY_TO_BOOL);
+                    }
+                    else {
+                        assert(cond_type->kind == KIND_BOOL);
+                    }
+                    emit_jfalse(cctx, else_label);
+
+                    temp = cdr(temp);
+                    const Type *then_type = compile(cctx, car(temp), NULL);
+                    emit_jump(cctx, end_label);
+
+                    emit_u64(cctx, else_label);
+                    temp = cdr(temp);
+                    const Type *else_type = compile(cctx, car(temp), then_type);
+
+                    emit_u64(cctx, end_label);
+
+                    temp = cdr(temp);
+                    assert(ANY_KIND(temp) == KIND_UNIT);
+                    assert(then_type == else_type);
+                    return then_type;
                 }
-                else {
-                    assert(cond_type->kind == KIND_BOOL);
-                }
-                emit_jfalse(cctx, else_label);
-
-                temp = cdr(temp);
-                const Type *then_type = compile(cctx, car(temp));
-                emit_jump(cctx, end_label);
-
-                emit_u64(cctx, else_label);
-                temp = cdr(temp);
-                const Type *else_type = compile(cctx, car(temp));
-
-                emit_u64(cctx, end_label);
-
-                temp = cdr(temp);
-                assert(ANY_KIND(temp) == KIND_UNIT);
-                assert(then_type == else_type);
-                return then_type;
             }
 
             /* call */
-            const Type *fun_type = compile(cctx, head);
-            emit_u64(cctx, OP_CALL);
+
+            uint32_t mark = cctx->code_used;
+            const Type *fun_type = compile(cctx, head, NULL);
+            CodeSegment *callable_seg = cut_code_from(cctx, mark);
+
+            Any args = cdr(form);
+            uint32_t arg_count = list_length(args);
+            if (fun_type->params) {
+                assert(arg_count == fun_type->params->length);
+            }
+
+            uint32_t i = 0;
+            while (ANY_KIND(args) != KIND_UNIT) {
+                const Type *wanted_type = fun_type->params ? fun_type->params->params[i].type : type_any;
+                
+                const Type *arg_type = compile(cctx, car(args), wanted_type);
+                args = cdr(args);
+                ++i;
+            }
+
+            paste_code(cctx, callable_seg);
+            free(callable_seg);
+
+            if (fun_type->kind == KIND_BUILTIN) {
+                assert(arg_count == fun_type->params->length);
+                assert(arg_count <= 3);
+                emit_u64(cctx, OP_CALL_BUILTIN_0 + arg_count);
+            }
+            else if (fun_type->kind == KIND_FUN) {
+                emit_u64(cctx, OP_CALL);
+            }
         }
     }
         
@@ -958,6 +1066,21 @@ static bool type_equal(const Type *a, const Type *b) {
             }
         }
     }
+    if (!!a->params != !!b->params) {
+        return false;
+    }
+    if (a->params) {
+        if (a->params->length != b->params->length) {
+            return false;
+        }
+        for (uint32_t i = 0; i < a->params->length; ++i) {
+            FunParam *pa = a->params->params + i;
+            FunParam *pb = b->params->params + i;
+            if (pa->type != pb->type) {
+                return false;
+            }
+        }
+    }
     return true;
 }
 
@@ -974,8 +1097,14 @@ static uint32_t hash_type(Type *t) {
         for (uint32_t i = 0; i < t->fields->length; ++i) {
             StructField *f = t->fields->fields + i;
             hash = fnv1a(&f->name, sizeof(f->name), hash);
-            hash = fnv1a(&f->type->hash, sizeof(t->target->hash), hash);
+            hash = fnv1a(&f->type->hash, sizeof(f->type->hash), hash);
             hash = fnv1a(&f->offset, sizeof(f->offset), hash);
+        }
+    }
+    if (t->params) {
+        for (uint32_t i = 0; i < t->params->length; ++i) {
+            FunParam *p = t->params->params + i;
+            hash = fnv1a(&p->type->hash, sizeof(p->type->hash), hash);
         }
     }
     return hash;
@@ -1019,24 +1148,8 @@ const Type *prim_type(uint32_t kind, uint32_t size) {
     return intern_type(&type);
 }
 
-StructFieldArray *struct_field_array(uint32_t field_count, StructField *fields) {
-    StructFieldArray *field_array = malloc(sizeof(StructFieldArray) + sizeof(StructField) * field_count);
-    field_array->length = field_count;
-    memcpy(field_array->fields, fields, sizeof(StructField) * field_count);
-    return field_array;
-}
-
-const Type *struct_type(uint32_t size, uint32_t field_count, StructField *fields) {
-    StructFieldArray *field_array = struct_field_array(field_count, fields);
-    Type type = { .kind = KIND_STRUCT, .size = size, .fields = field_array };
-    if (field_count > 0 && fields[field_count - 1].type->flags & TYPE_FLAG_UNSIZED) {
-        type.flags |= TYPE_FLAG_UNSIZED;
-    }
-    return intern_type(&type);
-}
-
 const Type *array_type(const Type *elem_type) {
-    Type type = { .kind = KIND_ARRAY, .flags = TYPE_FLAG_UNSIZED, .size = 0, .target = elem_type };
+    Type type = { .kind = KIND_ARRAY, .flags = TYPE_FLAG_UNSIZED, .target = elem_type };
     return intern_type(&type);
 }
 
@@ -1052,6 +1165,22 @@ const Type *ptr_type(const Type *elem_type) {
 
 const Type *ref_type(const Type *elem_type) {
     Type type = { .kind = KIND_REF, .size = sizeof(void *), .target = elem_type };
+    return intern_type(&type);
+}
+
+StructFieldArray *struct_field_array(uint32_t field_count, StructField *fields) {
+    StructFieldArray *field_array = malloc(sizeof(StructFieldArray) + sizeof(StructField) * field_count);
+    field_array->length = field_count;
+    memcpy(field_array->fields, fields, sizeof(StructField) * field_count);
+    return field_array;
+}
+
+const Type *struct_type(uint32_t size, uint32_t field_count, StructField *fields) {
+    StructFieldArray *field_array = struct_field_array(field_count, fields);
+    Type type = { .kind = KIND_STRUCT,.size = size,.fields = field_array };
+    if (field_count > 0 && fields[field_count - 1].type->flags & TYPE_FLAG_UNSIZED) {
+        type.flags |= TYPE_FLAG_UNSIZED;
+    }
     return intern_type(&type);
 }
 
@@ -1109,12 +1238,16 @@ void init_globals(void) {
         { .name = intern_symbol_str("target"), .type = type_ptr_type, .offset = offsetof(Type, target) },
         { .name = intern_symbol_str("fields"), .type = ptr_type(array_type(type_struct_field)), .offset = offsetof(Type, fields) },
     });
+
+    symbol_if = intern_symbol_str("if");
 }
 
 int main() {
     init_globals();
 
+    assert(intern_symbol_str("foo"));
     assert(intern_symbol_str("foo") == intern_symbol_str("foo"));
+    assert(prim_type(KIND_U32, sizeof(uint32_t)));
     assert(prim_type(KIND_U32, sizeof(uint32_t)) == prim_type(KIND_U32, sizeof(uint32_t)));
 
     CompilerCtx *cctx = calloc(1, sizeof(CompilerCtx));
@@ -1137,8 +1270,8 @@ int main() {
     print_code(cctx);
     printf("\n");
 
-    Function fun = { cctx->code };
-    VMCtx vm = { malloc(sizeof(Word) * MAX_STACK) };
+    Function fun = { .code = cctx->code };
+    VMCtx vm = { .stack = malloc(sizeof(Word) * MAX_STACK) };
     vm.sp = vm.stack;
 
     fgetc(stdin);
