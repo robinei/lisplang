@@ -12,9 +12,9 @@
 typedef union Word Word;
 typedef struct Any Any;
 typedef struct Type Type;
+typedef struct Symbol Symbol;
 typedef struct Cons Cons;
 typedef struct U8Array U8Array;
-typedef U8Array Symbol;
 typedef U8Array String;
 
 typedef Any(*FunPtr0)(void);
@@ -150,6 +150,12 @@ struct Cons {
     Any cdr;
 };
 
+struct Symbol {
+    uint32_t hash;
+    uint32_t length;
+    uint8_t *data;
+};
+
 struct U8Array {
     uint32_t length;
     uint8_t data[];
@@ -203,6 +209,8 @@ const Symbol *symbol_gt;
 const Symbol *symbol_lteq;
 const Symbol *symbol_gteq;
 const Symbol *symbol_print;
+const Symbol *symbol_tagbody;
+const Symbol *symbol_go;
 
 
 #define ANY_UNIT ((Any) { .type = MK_ANY_TYPE(type_unit) })
@@ -227,6 +235,8 @@ const Symbol *symbol_print;
 
 #define REFCOUNT(ptr) (((uint32_t *)(ptr))[-1])
 #define MAYBE_ADDREF(any) (ANY_KIND(any) == KIND_REF && ++REFCOUNT((any).val.ptr))
+
+#define IS_ANY_SYM(any, sym) (ANY_TYPE(any) == type_ptr_symbol && (any).val.symbol_ptr == sym)
 
 uint32_t to_u32(Any num) {
     switch (ANY_KIND(num)) {
@@ -436,18 +446,18 @@ Any array_set(Any arr, Any idx, Any val) {
 
 
 #define PROPS_UNIT(X)   X(UNIT, unit, uint32_t, "unit")
-#define PROPS_BOOL(X)   X(BOOL,  b32, bool, "%u")
-#define PROPS_U8(X)     X(U8,     u8, uint8_t, "%u")
+#define PROPS_BOOL(X)   X(BOOL,  b32, bool,     "%u")
+#define PROPS_U8(X)     X(U8,     u8, uint8_t,  "%u")
 #define PROPS_U16(X)    X(U16,   u16, uint16_t, "%u")
 #define PROPS_U32(X)    X(U32,   u32, uint32_t, "%u")
 #define PROPS_U64(X)    X(U64,   u64, uint64_t, "%llu")
-#define PROPS_I8(X)     X(I8,     i8, int8_t, "%d")
-#define PROPS_I16(X)    X(I16,   i16, int16_t, "%d")
-#define PROPS_I32(X)    X(I32,   i32, int32_t, "%d")
-#define PROPS_I64(X)    X(I64,   i64, int64_t, "%lld")
-#define PROPS_F32(X)    X(F32,   f32, float, "%.2f")
-#define PROPS_F64(X)    X(F64,   f64, double, "%.2f")
-#define PROPS_PTR(X)    X(PTR,   ptr, void *, "%p")
+#define PROPS_I8(X)     X(I8,     i8, int8_t,   "%d")
+#define PROPS_I16(X)    X(I16,   i16, int16_t,  "%d")
+#define PROPS_I32(X)    X(I32,   i32, int32_t,  "%d")
+#define PROPS_I64(X)    X(I64,   i64, int64_t,  "%lld")
+#define PROPS_F32(X)    X(F32,   f32, float,    "%.2f")
+#define PROPS_F64(X)    X(F64,   f64, double,   "%.2f")
+#define PROPS_PTR(X)    X(PTR,   ptr, void *,   "%p")
 
 #define FOR_ALL_NUM(X) \
     PROPS_U8(X) \
@@ -609,13 +619,11 @@ void interpret(uint64_t *ip, uint64_t *fp) {
         }
         case OP_RET: return; /* since we use the C call stack we just return */
 
-        FOR_ALL_PRIM_32(DEFINE_PRINT_INSTR)
-
-        FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)
-        FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR)
-
         case OP_MOVE: *(uint64_t *)(fp + INSTR_A(instr)) = *(uint64_t *)(fp + INSTR_B(instr)); continue;
 
+        FOR_ALL_PRIM_32(DEFINE_PRINT_INSTR)
+        FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)
+        FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR)
         case OP_NOT_BOOL: *(bool *)(fp + INSTR_A(instr)) = !*(bool *)(fp + INSTR_B(instr)); continue;
         FOR_ALL_NUM(DEFINE_ADD_INSTR)
         FOR_ALL_NUM(DEFINE_SUB_INSTR)
@@ -681,6 +689,18 @@ void print_code(uint64_t *code, uint32_t length) {
 }
 
 
+
+#define EXPAND_INTERFACE
+#define EXPAND_IMPLEMENTATION
+#define NAME LabelMap
+#define KEY_TYPE const Symbol *
+#define VALUE_TYPE uint32_t
+#define HASH_FUNC(x) ((x)->hash)
+#define EQUAL_FUNC(x, y) ((x) == (y))
+#include "hashtable.h"
+typedef struct LabelMap LabelMap;
+
+
 typedef struct CompilerCtx CompilerCtx;
 struct CompilerCtx {
     uint32_t stack_offset;
@@ -690,6 +710,7 @@ struct CompilerCtx {
     uint32_t code_capacity;
 
     uint32_t label_counter;
+    LabelMap label_map;
 };
 
 static uint32_t gen_label(CompilerCtx *cctx) {
@@ -833,10 +854,6 @@ static void strip_labels(CompilerCtx *cctx) {
 }
 
 
-
-
-
-
 const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
     const Type *form_type = ANY_TYPE(form);
 
@@ -856,34 +873,42 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 const Type *return_type = compile(&new_cctx, body_form, param_count + 1);
             }
 
-            if (head.val.symbol_ptr == symbol_if) {
+            if (head.val.symbol_ptr == symbol_tagbody) {
                 Any temp = cdr(form);
-                Any cond_form = car(temp);
-                temp = cdr(temp);
-                Any then_form = car(temp);
-                temp = cdr(temp);
-                Any else_form = car(temp);
-                temp = cdr(temp);
-                assert(ANY_KIND(temp) == KIND_UNIT);
 
-                uint32_t else_label = gen_label(cctx);
-                uint32_t end_label = gen_label(cctx);
+                for (; ANY_KIND(temp) != KIND_UNIT; temp = cdr(temp)) {
+                    Any stmt_form = car(temp);
+                    const Type *stmt_type = ANY_TYPE(stmt_form);
 
-                uint32_t cond_reg = cctx->stack_offset++;
-                const Type *cond_type = compile(cctx, cond_form, cond_reg);
-                emit_jfalse(cctx, cond_reg, else_label);
-                --cctx->stack_offset;
+                    if (stmt_type == type_ptr_symbol) {
+                        uint32_t label = gen_label(cctx);
+                        emit_label(cctx, label);
+                        LabelMap_put(&cctx->label_map, stmt_form.val.symbol_ptr, label);
+                        continue;
+                    }
+                    else if (stmt_type == type_ref_cons) {
+                        Any stmt_head_form = car(stmt_form);
+                        if (IS_ANY_SYM(stmt_head_form, symbol_go)) {
+                            stmt_form = cdr(stmt_form);
+                            Any label_sym = car(stmt_form);
+                            stmt_form = cdr(stmt_form);
+                            assert(ANY_KIND(stmt_form) == KIND_UNIT);
+                            assert(ANY_TYPE(label_sym) == type_ptr_symbol);
+                            uint32_t label;
+                            if (!LabelMap_get(&cctx->label_map, label_sym.val.symbol_ptr, &label)) {
+                                assert(0 && "bad label");
+                            }
+                            emit_jump(cctx, label);
+                            continue;
+                        }
+                    }
 
-                const Type *then_type = compile(cctx, then_form, dst_reg);
-                emit_jump(cctx, end_label);
-                emit_label(cctx, else_label);
-                const Type *else_type = compile(cctx, else_form, dst_reg);
-                emit_label(cctx, end_label);
+                    compile(cctx, stmt_form, dst_reg);
+                }
 
-                assert(then_type == else_type);
-                return then_type;
+                return type_unit;
             }
-            
+
             if (head.val.symbol_ptr == symbol_let) {
                 Any temp = cdr(form);
                 Any binds = car(temp);
@@ -912,6 +937,34 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 return body_type;
             }
 
+            if (head.val.symbol_ptr == symbol_if) {
+                Any temp = cdr(form);
+                Any cond_form = car(temp);
+                temp = cdr(temp);
+                Any then_form = car(temp);
+                temp = cdr(temp);
+                Any else_form = car(temp);
+                temp = cdr(temp);
+                assert(ANY_KIND(temp) == KIND_UNIT);
+
+                uint32_t else_label = gen_label(cctx);
+                uint32_t end_label = gen_label(cctx);
+
+                uint32_t cond_reg = cctx->stack_offset++;
+                const Type *cond_type = compile(cctx, cond_form, cond_reg);
+                --cctx->stack_offset;
+                emit_jfalse(cctx, cond_reg, else_label);
+
+                const Type *then_type = compile(cctx, then_form, dst_reg);
+                emit_jump(cctx, end_label);
+                emit_label(cctx, else_label);
+                const Type *else_type = compile(cctx, else_form, dst_reg);
+                emit_label(cctx, end_label);
+
+                assert(then_type == else_type);
+                return then_type;
+            }
+
             if (head.val.symbol_ptr == symbol_plus) {
                 Any temp = cdr(form);
                 Any a = car(temp);
@@ -922,11 +975,11 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 uint32_t b_reg = cctx->stack_offset++;
                 const Type *a_type = compile(cctx, a, a_reg);
                 const Type *b_type = compile(cctx, b, b_reg);
+                cctx->stack_offset -= 2;
+
                 assert(a_type == b_type);
                 assert(a_type->kind >= KIND_U8 && a_type->kind <= KIND_F64);
-
                 emit_op3(cctx, OP_ADD_U8 + (a_type->kind - KIND_U8), dst_reg, a_reg, b_reg);
-                cctx->stack_offset -= 2;
                 return a_type;
             }
 
@@ -936,10 +989,10 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
 
                 uint32_t reg = cctx->stack_offset++;
                 const Type *val_type = compile(cctx, val_form, reg);
-                assert(val_type->kind >= KIND_BOOL && val_type->kind <= KIND_PTR);
-
-                emit_op1(cctx, OP_PRINT_BOOL + (val_type->kind - KIND_BOOL), reg);
                 --cctx->stack_offset;
+
+                assert(val_type->kind >= KIND_BOOL && val_type->kind <= KIND_PTR);
+                emit_op1(cctx, OP_PRINT_BOOL + (val_type->kind - KIND_BOOL), reg);
                 return type_unit;
             }
         }
@@ -1029,7 +1082,9 @@ const Symbol *intern_symbol(const char *str, uint32_t length) {
             return sym;
         }
     }
-    Symbol *sym = malloc(sizeof(U8Array) + length + 1);
+    Symbol *sym = malloc(sizeof(Symbol));
+    sym->data = malloc(length + 1);
+    sym->hash = StrSlice_hash(slice);
     sym->length = length;
     memcpy(sym->data, str, length);
     sym->data[length] = 0;
@@ -1273,6 +1328,8 @@ void init_globals(void) {
     symbol_lteq     = intern_symbol_cstr("<=");
     symbol_gteq     = intern_symbol_cstr(">=");
     symbol_print    = intern_symbol_cstr("print");
+    symbol_tagbody  = intern_symbol_cstr("tagbody");
+    symbol_go       = intern_symbol_cstr("go");
 }
 
 
@@ -1299,14 +1356,20 @@ int main() {
     assert(prim_type(KIND_U32, sizeof(uint32_t)) == prim_type(KIND_U32, sizeof(uint32_t)));
 
     Any code =
-        list(sym("if"),
-             ANY_TRUE,
-             list(sym("print"), list(sym("+"), u32(10), u32(20), nil), nil),
-             list(sym("print"), u32(99), nil),
-             nil);
+        list(sym("tagbody"),
+            sym("start"),
+            list(sym("print"), u32(123), nil),
+            list(sym("go"), sym("start"), nil),
+            nil);
+        /*list(sym("if"),
+            ANY_TRUE,
+            list(sym("print"), list(sym("+"), u32(10), u32(20), nil), nil),
+            list(sym("print"), u32(99), nil),
+            nil);*/
 
 
     CompilerCtx *cctx = calloc(1, sizeof(CompilerCtx));
+    LabelMap_init(&cctx->label_map, 32);
     
     ++cctx->stack_offset; compile(cctx, code, 0);
 
@@ -1335,6 +1398,7 @@ int main() {
     printf("\nafter strip:\n");
     print_code(cctx->code, cctx->code_used);
 
+    fgetc(stdin);
     uint64_t stack[1024]; interpret(cctx->code, stack);
 
     fgetc(stdin);
