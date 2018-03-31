@@ -701,6 +701,36 @@ void print_code(uint64_t *code, uint32_t length) {
 typedef struct LabelMap LabelMap;
 
 
+typedef struct Binding Binding;
+struct Binding {
+    Any value;
+    const Symbol *symbol;
+    const Type *type;
+    uint32_t reg;
+};
+
+#define EXPAND_INTERFACE
+#define EXPAND_IMPLEMENTATION
+#define NAME BindingMap
+#define KEY_TYPE const Symbol *
+#define VALUE_TYPE Binding *
+#define HASH_FUNC(x) ((x)->hash)
+#define EQUAL_FUNC(x, y) ((x) == (y))
+#include "hashtable.h"
+typedef struct BindingMap BindingMap;
+
+typedef struct PrevLabel PrevLabel;
+struct PrevLabel {
+    const Symbol *symbol;
+    uint32_t label;
+};
+
+typedef struct PrevBinding PrevBinding;
+struct PrevBinding {
+    const Symbol *symbol;
+    Binding *binding;
+};
+
 typedef struct CompilerCtx CompilerCtx;
 struct CompilerCtx {
     uint32_t stack_offset;
@@ -711,10 +741,71 @@ struct CompilerCtx {
 
     uint32_t label_counter;
     LabelMap label_map;
+    PrevLabel *label_stack;
+    uint32_t label_stack_used;
+    uint32_t label_stack_capacity;
+
+    BindingMap binding_map;
+    PrevBinding *binding_stack;
+    uint32_t binding_stack_used;
+    uint32_t binding_stack_capacity;
 };
 
+static void push_label(CompilerCtx *cctx, const Symbol *sym, uint32_t label) {
+    if (cctx->label_stack_used == cctx->label_stack_capacity) {
+        cctx->label_stack_capacity = cctx->label_stack_capacity ? cctx->label_stack_capacity * 2 : 16;
+        cctx->label_stack = realloc(cctx->label_stack, cctx->label_stack_capacity * sizeof(PrevLabel));
+    }
+    uint32_t prev = 0;
+    LabelMap_get(&cctx->label_map, sym, &prev);
+    LabelMap_put(&cctx->label_map, sym, label);
+    cctx->label_stack[cctx->label_stack_used].symbol = sym;
+    cctx->label_stack[cctx->label_stack_used].label = prev;
+    ++cctx->label_stack_used;
+}
+
+static void pop_labels(CompilerCtx *cctx, uint32_t count) {
+    for (uint32_t i = 0; i < count; ++i) {
+        PrevLabel prev = cctx->label_stack[--cctx->label_stack_used];
+        if (prev.label) {
+            LabelMap_put(&cctx->label_map, prev.symbol, prev.label);
+        }
+        else {
+            LabelMap_remove(&cctx->label_map, prev.symbol);
+        }
+    }
+}
+
+static void push_binding(CompilerCtx *cctx, Binding *binding) {
+    if (cctx->binding_stack_used == cctx->binding_stack_capacity) {
+        cctx->binding_stack_capacity = cctx->binding_stack_capacity ? cctx->binding_stack_capacity * 2 : 16;
+        cctx->binding_stack = realloc(cctx->binding_stack, cctx->binding_stack_capacity * sizeof(PrevBinding));
+    }
+    Binding *prev = NULL;
+    BindingMap_get(&cctx->binding_map, binding->symbol, &prev);
+    BindingMap_put(&cctx->binding_map, binding->symbol, binding);
+    cctx->binding_stack[cctx->binding_stack_used].symbol = binding->symbol;
+    cctx->binding_stack[cctx->binding_stack_used].binding = prev;
+    ++cctx->binding_stack_used;
+}
+
+static void pop_bindings(CompilerCtx *cctx, uint32_t count) {
+    for (uint32_t i = 0; i < count; ++i) {
+        PrevBinding prev = cctx->binding_stack[--cctx->binding_stack_used];
+        if (prev.binding) {
+            Binding *curr;
+            BindingMap_get(&cctx->binding_map, prev.symbol, &curr);
+            BindingMap_put(&cctx->binding_map, prev.symbol, prev.binding);
+            free(curr);
+        }
+        else {
+            BindingMap_remove(&cctx->binding_map, prev.symbol);
+        }
+    }
+}
+
 static uint32_t gen_label(CompilerCtx *cctx) {
-    return cctx->label_counter++;
+    return ++cctx->label_counter;
 }
 
 static void emit(CompilerCtx *cctx, uint64_t instr) {
@@ -857,6 +948,15 @@ static void strip_labels(CompilerCtx *cctx) {
 const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
     const Type *form_type = ANY_TYPE(form);
 
+    if (form_type == type_ptr_symbol) {
+        Binding *binding;
+        if (!BindingMap_get(&cctx->binding_map, form.val.symbol_ptr, &binding)) {
+            assert(0 && "not found");
+        }
+        emit_op2(cctx, OP_MOVE, dst_reg, binding->reg);
+        return binding->type;
+    }
+
     if (form_type == type_ref_cons) {
         Any head = car(form);
 
@@ -875,6 +975,7 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
 
             if (head.val.symbol_ptr == symbol_tagbody) {
                 Any temp = cdr(form);
+                uint32_t label_count = 0;
 
                 for (; ANY_KIND(temp) != KIND_UNIT; temp = cdr(temp)) {
                     Any stmt_form = car(temp);
@@ -883,7 +984,8 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                     if (stmt_type == type_ptr_symbol) {
                         uint32_t label = gen_label(cctx);
                         emit_label(cctx, label);
-                        LabelMap_put(&cctx->label_map, stmt_form.val.symbol_ptr, label);
+                        push_label(cctx, stmt_form.val.symbol_ptr, label);
+                        ++label_count;
                         continue;
                     }
                     else if (stmt_type == type_ref_cons) {
@@ -906,6 +1008,7 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                     compile(cctx, stmt_form, dst_reg);
                 }
 
+                pop_labels(cctx, label_count);
                 return type_unit;
             }
 
@@ -927,13 +1030,21 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                     temp = cdr(temp);
                     Any init_form = car(temp);
                     temp = cdr(temp);
+                    assert(ANY_TYPE(sym_form) == type_ptr_symbol);
 
                     uint32_t bind_reg = base_reg + i;
                     const Type *expr_type = compile(cctx, init_form, bind_reg);
+
+                    Binding *binding = calloc(1, sizeof(Binding));
+                    binding->reg = bind_reg;
+                    binding->symbol = sym_form.val.symbol_ptr;
+                    binding->type = expr_type;
+                    push_binding(cctx, binding);
                 }
 
                 const Type *body_type = compile(cctx, body, dst_reg);
                 cctx->stack_offset -= bind_count;
+                pop_bindings(cctx, bind_count);
                 return body_type;
             }
 
@@ -1356,20 +1467,27 @@ int main() {
     assert(prim_type(KIND_U32, sizeof(uint32_t)) == prim_type(KIND_U32, sizeof(uint32_t)));
 
     Any code =
-        list(sym("tagbody"),
-            sym("start"),
-            list(sym("print"), u32(123), nil),
-            list(sym("go"), sym("start"), nil),
-            nil);
-        /*list(sym("if"),
-            ANY_TRUE,
-            list(sym("print"), list(sym("+"), u32(10), u32(20), nil), nil),
-            list(sym("print"), u32(99), nil),
-            nil);*/
-
+        list(
+            sym("let"),
+            list(
+                sym("x"),
+                u32(44),
+                nil
+            ),
+            list(
+                sym("tagbody"),
+                sym("start"),
+                list(sym("print"), sym("x"), nil),
+                list(sym("go"), sym("start"), nil),
+                nil
+            ),
+            nil
+        )
+        ;
 
     CompilerCtx *cctx = calloc(1, sizeof(CompilerCtx));
     LabelMap_init(&cctx->label_map, 32);
+    BindingMap_init(&cctx->binding_map, 32);
     
     ++cctx->stack_offset; compile(cctx, code, 0);
 
