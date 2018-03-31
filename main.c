@@ -198,6 +198,7 @@ const Symbol *symbol_quote;
 const Symbol *symbol_fun;
 const Symbol *symbol_def;
 const Symbol *symbol_do;
+const Symbol *symbol_assign;
 const Symbol *symbol_plus;
 const Symbol *symbol_minus;
 const Symbol *symbol_mul;
@@ -1075,6 +1076,30 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 return then_type;
             }
 
+            if (head.val.symbol_ptr == symbol_assign) {
+                Any temp = cdr(form);
+                Any sym_form = car(temp);
+                temp = cdr(temp);
+                Any val_form = car(temp);
+                temp = cdr(temp);
+                assert(ANY_KIND(temp) == KIND_UNIT);
+                assert(ANY_TYPE(sym_form) == type_ptr_symbol);
+
+                Binding *binding;
+                if (!BindingMap_get(&cctx->binding_map, sym_form.val.symbol_ptr, &binding)) {
+                    assert(0 && "not found");
+                }
+
+
+                uint32_t reg = cctx->stack_offset++;
+                const Type *val_type = compile(cctx, val_form, reg);
+                --cctx->stack_offset;
+
+                emit_op2(cctx, OP_MOVE, binding->reg, reg);
+
+                return type_unit;
+            }
+
             if (head.val.symbol_ptr == symbol_plus) {
                 Any temp = cdr(form);
                 Any a = car(temp);
@@ -1427,6 +1452,7 @@ void init_globals(void) {
     symbol_fun      = intern_symbol_cstr("fun");
     symbol_def      = intern_symbol_cstr("def");
     symbol_do       = intern_symbol_cstr("do");
+    symbol_assign   = intern_symbol_cstr("=");
     symbol_plus     = intern_symbol_cstr("+");
     symbol_minus    = intern_symbol_cstr("-");
     symbol_mul      = intern_symbol_cstr("*");
@@ -1471,13 +1497,39 @@ int main() {
             list(
                 sym("x"),
                 u32(44),
+                sym("y"),
+                u32(55),
                 nil
             ),
             list(
                 sym("tagbody"),
                 sym("start"),
-                list(sym("print"), sym("x"), nil),
-                list(sym("go"), sym("start"), nil),
+                list(
+                    sym("="),
+                    sym("y"),
+                    list(
+                        sym("+"),
+                        sym("y"),
+                        u32(1),
+                        nil
+                    ),
+                    nil
+                ),
+                list(
+                    sym("print"),
+                    list(
+                        sym("+"),
+                        sym("x"),
+                        sym("y"),
+                        nil
+                    ),
+                    nil
+                ),
+                list(
+                    sym("go"),
+                    sym("start"),
+                    nil
+                ),
                 nil
             ),
             nil
