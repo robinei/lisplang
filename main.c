@@ -986,29 +986,28 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                         emit_label(cctx, label);
                         push_label(cctx, stmt_form.val.symbol_ptr, label);
                         ++label_count;
-                        continue;
                     }
-                    else if (stmt_type == type_ref_cons) {
-                        Any stmt_head_form = car(stmt_form);
-                        if (IS_ANY_SYM(stmt_head_form, symbol_go)) {
-                            stmt_form = cdr(stmt_form);
-                            Any label_sym = car(stmt_form);
-                            stmt_form = cdr(stmt_form);
-                            assert(ANY_KIND(stmt_form) == KIND_UNIT);
-                            assert(ANY_TYPE(label_sym) == type_ptr_symbol);
-                            uint32_t label;
-                            if (!LabelMap_get(&cctx->label_map, label_sym.val.symbol_ptr, &label)) {
-                                assert(0 && "bad label");
-                            }
-                            emit_jump(cctx, label);
-                            continue;
-                        }
+                    else {
+                        compile(cctx, stmt_form, dst_reg);
                     }
-
-                    compile(cctx, stmt_form, dst_reg);
                 }
 
                 pop_labels(cctx, label_count);
+                return type_unit;
+            }
+
+            if (head.val.symbol_ptr == symbol_go) {
+                Any temp = cdr(form);
+                Any label_sym = car(temp);
+                temp = cdr(temp);
+                assert(ANY_KIND(temp) == KIND_UNIT);
+                assert(ANY_TYPE(label_sym) == type_ptr_symbol);
+                uint32_t label;
+                if (!LabelMap_get(&cctx->label_map, label_sym.val.symbol_ptr, &label)) {
+                    printf("label not found: %s\n", label_sym.val.symbol_ptr->data);
+                    assert(0 && "bad label");
+                }
+                emit_jump(cctx, label);
                 return type_unit;
             }
 
