@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 #include "fnv.h"
 #include "murmur3.h"
 
@@ -203,6 +204,7 @@ const Symbol *symbol_plus;
 const Symbol *symbol_minus;
 const Symbol *symbol_mul;
 const Symbol *symbol_div;
+const Symbol *symbol_mod;
 const Symbol *symbol_not;
 const Symbol *symbol_eq;
 const Symbol *symbol_lt;
@@ -332,7 +334,7 @@ Any cons(Any car, Any cdr) {
     return (Any) { .type = MK_ANY_TYPE(type_ref_cons), .val.cons_ptr = c };
 }
 
-Any list(Any first, ...) {
+Any make_list(Any first, ...) {
     Any arr[128];
     arr[0] = first;
     int i = 0;
@@ -460,7 +462,7 @@ Any array_set(Any arr, Any idx, Any val) {
 #define PROPS_F64(X)    X(F64,   f64, double,   "%.2f")
 #define PROPS_PTR(X)    X(PTR,   ptr, void *,   "%p")
 
-#define FOR_ALL_NUM(X) \
+#define FOR_ALL_INT(X) \
     PROPS_U8(X) \
     PROPS_U16(X) \
     PROPS_U32(X) \
@@ -468,7 +470,10 @@ Any array_set(Any arr, Any idx, Any val) {
     PROPS_I8(X) \
     PROPS_I16(X) \
     PROPS_I32(X) \
-    PROPS_I64(X) \
+    PROPS_I64(X)
+
+#define FOR_ALL_NUM(X) \
+    FOR_ALL_INT(X) \
     PROPS_F32(X) \
     PROPS_F64(X)
 
@@ -503,6 +508,7 @@ Any array_set(Any arr, Any idx, Any val) {
 #define DEF_SUB_ENUM(UNAME, LNAME, TYPE, FMT) OP_SUB_ ## UNAME,
 #define DEF_MUL_ENUM(UNAME, LNAME, TYPE, FMT) OP_MUL_ ## UNAME,
 #define DEF_DIV_ENUM(UNAME, LNAME, TYPE, FMT) OP_DIV_ ## UNAME,
+#define DEF_MOD_ENUM(UNAME, LNAME, TYPE, FMT) OP_MOD_ ## UNAME,
 #define DEF_EQ_ENUM(UNAME, LNAME, TYPE, FMT) OP_EQ_ ## UNAME,
 #define DEF_LT_ENUM(UNAME, LNAME, TYPE, FMT) OP_LT_ ## UNAME,
 #define DEF_GT_ENUM(UNAME, LNAME, TYPE, FMT) OP_GT_ ## UNAME,
@@ -535,6 +541,7 @@ enum {
     FOR_ALL_NUM(DEF_SUB_ENUM)
     FOR_ALL_NUM(DEF_MUL_ENUM)
     FOR_ALL_NUM(DEF_DIV_ENUM)
+    FOR_ALL_NUM(DEF_MOD_ENUM)
     FOR_ALL_PRIM(DEF_EQ_ENUM)
     FOR_ALL_NUM(DEF_LT_ENUM)
     FOR_ALL_NUM(DEF_GT_ENUM)
@@ -570,7 +577,7 @@ enum {
 
 
 #define DEFINE_PRINT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    case OP_PRINT_ ## UNAME:  printf(FMT "\n", *(TYPE  *)(fp + INSTR_A(instr))); continue;
+    case OP_PRINT_ ## UNAME:  printf("printed: " FMT "\n", *(TYPE  *)(fp + INSTR_A(instr))); continue;
 #define DEFINE_LIT_32_INSTR(UNAME, LNAME, TYPE, FMT) \
     case OP_LIT_ ## UNAME:   *(TYPE  *)(fp + INSTR_A(instr)) = (TYPE)INSTR_BC(instr); continue;
 #define DEFINE_LIT_64_INSTR(UNAME, LNAME, TYPE, FMT) \
@@ -583,6 +590,8 @@ enum {
     case OP_MUL_ ## UNAME:   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) *  *(TYPE  *)(fp + INSTR_C(instr)); continue;
 #define DEFINE_DIV_INSTR(UNAME, LNAME, TYPE, FMT) \
     case OP_DIV_ ## UNAME:   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) /  *(TYPE  *)(fp + INSTR_C(instr)); continue;
+#define DEFINE_MOD_INSTR(UNAME, LNAME, TYPE, FMT) \
+    case OP_MOD_ ## UNAME:   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) %  *(TYPE  *)(fp + INSTR_C(instr)); continue;
 #define DEFINE_EQ_INSTR(UNAME, LNAME, TYPE, FMT) \
     case OP_EQ_ ## UNAME:    *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) == *(TYPE  *)(fp + INSTR_C(instr)); continue;
 #define DEFINE_LT_INSTR(UNAME, LNAME, TYPE, FMT) \
@@ -594,8 +603,11 @@ enum {
 #define DEFINE_GTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
     case OP_GTEQ_ ## UNAME:  *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) >= *(TYPE  *)(fp + INSTR_C(instr)); continue;
 
+static uint64_t *print_instr(uint64_t *code);
+
 void interpret(uint64_t *ip, uint64_t *fp) {
     for(;;) {
+        //printf("exec: "); print_instr(ip);
         uint64_t instr = *ip++;
 
         switch (INSTR_OP(instr)) {
@@ -622,7 +634,7 @@ void interpret(uint64_t *ip, uint64_t *fp) {
 
         case OP_MOVE: *(uint64_t *)(fp + INSTR_A(instr)) = *(uint64_t *)(fp + INSTR_B(instr)); continue;
 
-        FOR_ALL_PRIM_32(DEFINE_PRINT_INSTR)
+        FOR_ALL_PRIM(DEFINE_PRINT_INSTR)
         FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)
         FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR)
         case OP_NOT_BOOL: *(bool *)(fp + INSTR_A(instr)) = !*(bool *)(fp + INSTR_B(instr)); continue;
@@ -630,6 +642,7 @@ void interpret(uint64_t *ip, uint64_t *fp) {
         FOR_ALL_NUM(DEFINE_SUB_INSTR)
         FOR_ALL_NUM(DEFINE_MUL_INSTR)
         FOR_ALL_NUM(DEFINE_DIV_INSTR)
+        FOR_ALL_INT(DEFINE_MOD_INSTR)
         FOR_ALL_PRIM(DEFINE_EQ_INSTR)
         FOR_ALL_NUM(DEFINE_LT_INSTR)
         FOR_ALL_NUM(DEFINE_GT_INSTR)
@@ -646,49 +659,127 @@ void interpret(uint64_t *ip, uint64_t *fp) {
 #define DEFINE_PRINT_SUB(UNAME, LNAME, TYPE, FMT) PRINT_OP3(SUB, sub, UNAME, LNAME)
 #define DEFINE_PRINT_MUL(UNAME, LNAME, TYPE, FMT) PRINT_OP3(MUL, mul, UNAME, LNAME)
 #define DEFINE_PRINT_DIV(UNAME, LNAME, TYPE, FMT) PRINT_OP3(DIV, div, UNAME, LNAME)
+#define DEFINE_PRINT_MOD(UNAME, LNAME, TYPE, FMT) PRINT_OP3(MOD, mod, UNAME, LNAME)
 #define DEFINE_PRINT_EQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(EQ, eq, UNAME, LNAME)
 #define DEFINE_PRINT_LT(UNAME, LNAME, TYPE, FMT) PRINT_OP3(LT, lt, UNAME, LNAME)
 #define DEFINE_PRINT_GT(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GT, gt, UNAME, LNAME)
 #define DEFINE_PRINT_LTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(LTEQ, lteq, UNAME, LNAME)
 #define DEFINE_PRINT_GTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GTEQ, gteq, UNAME, LNAME)
 #define PRINT_PRINT_LIT_32(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp32 = INSTR_BC(instr); printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp32); break;
-#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[i++];       printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); break;
+#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];       printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
 #define DEFINE_PRINT_PRINT(UNAME, LNAME, TYPE, FMT) case OP_PRINT_ ## UNAME: printf(INAME_FMT "r%u\n", "print/" #LNAME, INSTR_A(instr)); break;
 
-void print_code(uint64_t *code, uint32_t length) {
+static uint64_t *print_instr(uint64_t *code) {
     uint32_t temp32;
     uint64_t temp64;
+    uint64_t instr = code[0];
 
-    for (uint32_t i = 0; i < length; ++i) {
-        uint64_t instr = code[i];
-
-        switch (INSTR_OP(instr)) {
-        case OP_LABEL: printf(":%u\n", INSTR_BC(instr)); break;
-        case OP_JUMP_LABEL: printf(INAME_FMT ":%u\n", "jump", INSTR_BC(instr)); break;
-        case OP_JFALSE_LABEL: printf(INAME_FMT "r%u :%u\n", "jfalse", INSTR_A(instr), INSTR_BC(instr)); break;
-        case OP_JTRUE_LABEL: printf(INAME_FMT "r%u :%u\n", "jtrue", INSTR_A(instr), INSTR_BC(instr)); break;
-        case OP_JUMP: printf(INAME_FMT "%+d\n", "jump", (int32_t)INSTR_BC(instr)); break;
-        case OP_JFALSE: printf(INAME_FMT "r%u %+d\n", "jfalse", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
-        case OP_JTRUE: printf(INAME_FMT "r%u %+d\n", "jtrue", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
-        case OP_RET: printf("ret\n"); break;
-        case OP_MOVE: printf(INAME_FMT "r%u <- r%u\n", "move", INSTR_A(instr), INSTR_B(instr)); break;
-        case OP_NOT_BOOL: printf(INAME_FMT "r%u <- r%u\n", "not/bool", INSTR_A(instr), INSTR_B(instr)); break;
+    switch (INSTR_OP(instr)) {
+    case OP_LABEL: printf(":%u\n", INSTR_BC(instr)); break;
+    case OP_JUMP_LABEL: printf(INAME_FMT ":%u\n", "jump", INSTR_BC(instr)); break;
+    case OP_JFALSE_LABEL: printf(INAME_FMT "r%u :%u\n", "jfalse", INSTR_A(instr), INSTR_BC(instr)); break;
+    case OP_JTRUE_LABEL: printf(INAME_FMT "r%u :%u\n", "jtrue", INSTR_A(instr), INSTR_BC(instr)); break;
+    case OP_JUMP: printf(INAME_FMT "%+d\n", "jump", (int32_t)INSTR_BC(instr)); break;
+    case OP_JFALSE: printf(INAME_FMT "r%u %+d\n", "jfalse", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
+    case OP_JTRUE: printf(INAME_FMT "r%u %+d\n", "jtrue", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
+    case OP_RET: printf("ret\n"); break;
+    case OP_MOVE: printf(INAME_FMT "r%u <- r%u\n", "move", INSTR_A(instr), INSTR_B(instr)); break;
+    case OP_NOT_BOOL: printf(INAME_FMT "r%u <- r%u\n", "not/bool", INSTR_A(instr), INSTR_B(instr)); break;
         FOR_ALL_PRIM(DEFINE_PRINT_PRINT)
-        FOR_ALL_PRIM_32(PRINT_PRINT_LIT_32)
-        FOR_ALL_PRIM_64(PRINT_PRINT_LIT_64)
-        FOR_ALL_NUM(DEFINE_PRINT_ADD)
-        FOR_ALL_NUM(DEFINE_PRINT_SUB)
-        FOR_ALL_NUM(DEFINE_PRINT_MUL)
-        FOR_ALL_NUM(DEFINE_PRINT_DIV)
-        FOR_ALL_PRIM(DEFINE_PRINT_EQ)
-        FOR_ALL_NUM(DEFINE_PRINT_LT)
-        FOR_ALL_NUM(DEFINE_PRINT_GT)
-        FOR_ALL_NUM(DEFINE_PRINT_LTEQ)
-        FOR_ALL_NUM(DEFINE_PRINT_GTEQ)
-        }
+            FOR_ALL_PRIM_32(PRINT_PRINT_LIT_32)
+            FOR_ALL_PRIM_64(PRINT_PRINT_LIT_64)
+            FOR_ALL_NUM(DEFINE_PRINT_ADD)
+            FOR_ALL_NUM(DEFINE_PRINT_SUB)
+            FOR_ALL_NUM(DEFINE_PRINT_MUL)
+            FOR_ALL_NUM(DEFINE_PRINT_DIV)
+            FOR_ALL_INT(DEFINE_PRINT_MOD)
+            FOR_ALL_PRIM(DEFINE_PRINT_EQ)
+            FOR_ALL_NUM(DEFINE_PRINT_LT)
+            FOR_ALL_NUM(DEFINE_PRINT_GT)
+            FOR_ALL_NUM(DEFINE_PRINT_LTEQ)
+            FOR_ALL_NUM(DEFINE_PRINT_GTEQ)
+    }
+    return code + 1;
+}
+
+void print_code(uint64_t *code, uint32_t length) {
+    uint64_t *max = code + length;
+    while (code < max) {
+        code = print_instr(code);
     }
 }
 
+
+
+
+typedef struct ReservedRegs ReservedRegs;
+struct ReservedRegs {
+    uint32_t words_used;
+    uint32_t words_capacity;
+    uint64_t *words;
+};
+
+#define CHECK_4_BITS(offset) \
+    if (!(word & ((uint64_t)1 << (offset + 0)))) { return offset + 0; } \
+    if (!(word & ((uint64_t)1 << (offset + 1)))) { return offset + 1; } \
+    if (!(word & ((uint64_t)1 << (offset + 2)))) { return offset + 2; } \
+    return offset + 3;
+#define CHECK_8_BITS(offset) \
+    if ((word & ((uint64_t)0xf << (offset))) != ((uint64_t)0xf << (offset))) { CHECK_4_BITS(offset) } \
+    else { CHECK_4_BITS(offset + 4) }
+#define CHECK_16_BITS(offset) \
+    if ((word & ((uint64_t)0xff << (offset))) != ((uint64_t)0xff << (offset))) { CHECK_8_BITS(offset) } \
+    else { CHECK_8_BITS(offset + 8) }
+#define CHECK_32_BITS(offset) \
+    if ((word & ((uint64_t)0xffff << (offset))) != ((uint64_t)0xffff << (offset))) { CHECK_16_BITS(offset) } \
+    else { CHECK_16_BITS(offset + 16) }
+static int32_t first_unset_bit_index(uint64_t word) {
+    if (word == 0xffffffffffffffff) { return -1;  }
+    if ((word & 0xffffffff) != 0xffffffff) { CHECK_32_BITS(0) }
+    else { CHECK_32_BITS(32) }
+}
+
+static void reserve_register(ReservedRegs *regs, uint32_t reg) {
+    uint32_t w = reg / 64;
+    if (w >= regs->words_used) {
+        if (!regs->words_capacity) {
+            regs->words_capacity = 16;
+        }
+        while (w >= regs->words_capacity) {
+            regs->words_capacity *= 2;
+        }
+        regs->words = realloc(regs->words, sizeof(uint64_t) * regs->words_capacity);
+        while (w >= regs->words_used) {
+            regs->words[regs->words_used++] = 0;
+        }
+    }
+    uint32_t b = reg % 64;
+    regs->words[w] |= (uint64_t)1 << b;
+}
+
+static void release_register(ReservedRegs *regs, uint32_t reg) {
+    uint32_t w = reg / 64;
+    if (w < regs->words_used) {
+        uint32_t b = reg % 64;
+        regs->words[w] &= ~((uint64_t)1 << b);
+    }
+}
+
+static uint32_t alloc_register(ReservedRegs *regs) {
+    for (uint32_t i = 0; i < regs->words_used; ++i) {
+        int32_t index = first_unset_bit_index(regs->words[i]);
+        if (index >= 0) {
+            regs->words[i] |= (uint64_t)1 << index;
+            return i * 64 + index;
+        }
+    }
+    if (regs->words_used == regs->words_capacity) {
+        regs->words_capacity = regs->words_capacity ? regs->words_capacity * 2 : 16;
+        regs->words = realloc(regs->words, sizeof(uint64_t) * regs->words_capacity);
+    }
+    regs->words[regs->words_used] = 1;
+    return regs->words_used++ * 64;
+}
 
 
 #define EXPAND_INTERFACE
@@ -734,8 +825,6 @@ struct PrevBinding {
 
 typedef struct CompilerCtx CompilerCtx;
 struct CompilerCtx {
-    uint32_t stack_offset;
-
     uint64_t *code;
     uint32_t code_used;
     uint32_t code_capacity;
@@ -750,6 +839,8 @@ struct CompilerCtx {
     PrevBinding *binding_stack;
     uint32_t binding_stack_used;
     uint32_t binding_stack_capacity;
+
+    ReservedRegs regs;
 };
 
 static void push_label(CompilerCtx *cctx, const Symbol *sym, uint32_t label) {
@@ -777,6 +868,15 @@ static void pop_labels(CompilerCtx *cctx, uint32_t count) {
     }
 }
 
+static uint32_t lookup_label(CompilerCtx *cctx, const Symbol *sym) {
+    uint32_t label;
+    if (!LabelMap_get(&cctx->label_map, sym, &label)) {
+        printf("label not found: %s\n", sym->data);
+        assert(0 && "bad label");
+    }
+    return label;
+}
+
 static void push_binding(CompilerCtx *cctx, Binding *binding) {
     if (cctx->binding_stack_used == cctx->binding_stack_capacity) {
         cctx->binding_stack_capacity = cctx->binding_stack_capacity ? cctx->binding_stack_capacity * 2 : 16;
@@ -791,17 +891,23 @@ static void push_binding(CompilerCtx *cctx, Binding *binding) {
 }
 
 static void pop_bindings(CompilerCtx *cctx, uint32_t count) {
+    assert(cctx->binding_stack_used >= count);
     for (uint32_t i = 0; i < count; ++i) {
         PrevBinding prev = cctx->binding_stack[--cctx->binding_stack_used];
+
+        Binding *curr = NULL;
+        BindingMap_get(&cctx->binding_map, prev.symbol, &curr);
+        assert(curr);
+
         if (prev.binding) {
-            Binding *curr;
-            BindingMap_get(&cctx->binding_map, prev.symbol, &curr);
             BindingMap_put(&cctx->binding_map, prev.symbol, prev.binding);
-            free(curr);
         }
         else {
             BindingMap_remove(&cctx->binding_map, prev.symbol);
         }
+
+        release_register(&cctx->regs, curr->reg);
+        free(curr);
     }
 }
 
@@ -946,7 +1052,49 @@ static void strip_labels(CompilerCtx *cctx) {
 }
 
 
-const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
+typedef struct CompileResult CompileResult;
+struct CompileResult {
+    const Type *type;
+    uint32_t reg;
+    bool reg_owned;
+};
+
+#define ANY_REG UINT32_MAX
+
+const CompileResult compile(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint);
+
+static CompileResult compile_bin_op(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint, uint32_t base_op, uint32_t max_kind) {
+    Any temp = cdr(form);
+    Any a = car(temp);
+    temp = cdr(temp);
+    Any b = car(temp);
+
+    bool reg_owned = false;
+    uint32_t dst_reg = dst_reg_hint;
+    if (dst_reg == ANY_REG) {
+        dst_reg = alloc_register(&cctx->regs);
+        reg_owned = true;
+    }
+
+    CompileResult a_result = compile(cctx, a, dst_reg);
+    CompileResult b_result = compile(cctx, b, ANY_REG);
+
+    assert(a_result.type == b_result.type);
+    assert(a_result.type->kind >= KIND_U8 && a_result.type->kind <= max_kind);
+
+    emit_op3(cctx, base_op + (a_result.type->kind - KIND_U8), dst_reg, a_result.reg, b_result.reg);
+
+    if (a_result.reg_owned) {
+        assert(a_result.reg != dst_reg);
+        release_register(&cctx->regs, a_result.reg);
+    }
+    if (b_result.reg_owned) {
+        release_register(&cctx->regs, b_result.reg);
+    }
+    return (CompileResult) { a_result.type, dst_reg, reg_owned };
+}
+
+const CompileResult compile(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint) {
     const Type *form_type = ANY_TYPE(form);
 
     if (form_type == type_ptr_symbol) {
@@ -954,8 +1102,7 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
         if (!BindingMap_get(&cctx->binding_map, form.val.symbol_ptr, &binding)) {
             assert(0 && "not found");
         }
-        emit_op2(cctx, OP_MOVE, dst_reg, binding->reg);
-        return binding->type;
+        return (CompileResult) { binding->type, binding->reg };
     }
 
     if (form_type == type_ref_cons) {
@@ -969,32 +1116,38 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 Any body_form = car(temp);
 
                 uint32_t param_count = list_length(params_form);
-
-                CompilerCtx new_cctx = { param_count + 1, };
-                const Type *return_type = compile(&new_cctx, body_form, param_count + 1);
             }
 
             if (head.val.symbol_ptr == symbol_tagbody) {
-                Any temp = cdr(form);
                 uint32_t label_count = 0;
 
+                Any temp = cdr(form);
                 for (; ANY_KIND(temp) != KIND_UNIT; temp = cdr(temp)) {
                     Any stmt_form = car(temp);
-                    const Type *stmt_type = ANY_TYPE(stmt_form);
-
-                    if (stmt_type == type_ptr_symbol) {
+                    if (ANY_TYPE(stmt_form) == type_ptr_symbol) {
                         uint32_t label = gen_label(cctx);
-                        emit_label(cctx, label);
                         push_label(cctx, stmt_form.val.symbol_ptr, label);
                         ++label_count;
                     }
+                }
+
+                temp = cdr(form);
+                for (; ANY_KIND(temp) != KIND_UNIT; temp = cdr(temp)) {
+                    Any stmt_form = car(temp);
+                    if (ANY_TYPE(stmt_form) == type_ptr_symbol) {
+                        uint32_t label = lookup_label(cctx, stmt_form.val.symbol_ptr);
+                        emit_label(cctx, label);
+                    }
                     else {
-                        compile(cctx, stmt_form, dst_reg);
+                        CompileResult result = compile(cctx, stmt_form, ANY_REG);
+                        if (result.reg_owned) {
+                            release_register(&cctx->regs, result.reg);
+                        }
                     }
                 }
 
                 pop_labels(cctx, label_count);
-                return type_unit;
+                return (CompileResult) { type_unit, ANY_REG };
             }
 
             if (head.val.symbol_ptr == symbol_go) {
@@ -1003,13 +1156,9 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 temp = cdr(temp);
                 assert(ANY_KIND(temp) == KIND_UNIT);
                 assert(ANY_TYPE(label_sym) == type_ptr_symbol);
-                uint32_t label;
-                if (!LabelMap_get(&cctx->label_map, label_sym.val.symbol_ptr, &label)) {
-                    printf("label not found: %s\n", label_sym.val.symbol_ptr->data);
-                    assert(0 && "bad label");
-                }
+                uint32_t label = lookup_label(cctx, label_sym.val.symbol_ptr);
                 emit_jump(cctx, label);
-                return type_unit;
+                return (CompileResult) { type_unit, ANY_REG };
             }
 
             if (head.val.symbol_ptr == symbol_let) {
@@ -1021,8 +1170,6 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 uint32_t binds_length = list_length(binds);
                 assert((binds_length % 2) == 0);
                 uint32_t bind_count = binds_length / 2;
-                uint32_t base_reg = cctx->stack_offset;
-                cctx->stack_offset += bind_count;
 
                 temp = binds;
                 for (uint32_t i = 0; i < bind_count; ++i) {
@@ -1032,20 +1179,27 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                     temp = cdr(temp);
                     assert(ANY_TYPE(sym_form) == type_ptr_symbol);
 
-                    uint32_t bind_reg = base_reg + i;
-                    const Type *expr_type = compile(cctx, init_form, bind_reg);
+                    uint32_t binding_reg = alloc_register(&cctx->regs);
+                    CompileResult init_result = compile(cctx, init_form, binding_reg);
+                    if (init_result.reg != binding_reg) {
+                        emit_op2(cctx, OP_MOVE, binding_reg, init_result.reg);
+                        if (init_result.reg_owned) {
+                            release_register(&cctx->regs, init_result.reg);
+                        }
+                    }
+                    assert(init_result.reg == binding_reg);
 
                     Binding *binding = calloc(1, sizeof(Binding));
-                    binding->reg = bind_reg;
+                    binding->reg = binding_reg;
                     binding->symbol = sym_form.val.symbol_ptr;
-                    binding->type = expr_type;
+                    binding->type = init_result.type;
                     push_binding(cctx, binding);
                 }
 
-                const Type *body_type = compile(cctx, body, dst_reg);
-                cctx->stack_offset -= bind_count;
+                CompileResult body_result = compile(cctx, body, dst_reg_hint);
+
                 pop_bindings(cctx, bind_count);
-                return body_type;
+                return body_result;
             }
 
             if (head.val.symbol_ptr == symbol_if) {
@@ -1061,19 +1215,31 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                 uint32_t else_label = gen_label(cctx);
                 uint32_t end_label = gen_label(cctx);
 
-                uint32_t cond_reg = cctx->stack_offset++;
-                const Type *cond_type = compile(cctx, cond_form, cond_reg);
-                --cctx->stack_offset;
-                emit_jfalse(cctx, cond_reg, else_label);
-
-                const Type *then_type = compile(cctx, then_form, dst_reg);
+                CompileResult cond_result = compile(cctx, cond_form, ANY_REG);
+                emit_jfalse(cctx, cond_result.reg, else_label);
+                if (cond_result.reg_owned) {
+                    release_register(&cctx->regs, cond_result.reg);
+                }
+                
+                CompileResult then_result = compile(cctx, then_form, dst_reg_hint);
                 emit_jump(cctx, end_label);
                 emit_label(cctx, else_label);
-                const Type *else_type = compile(cctx, else_form, dst_reg);
+                if (then_result.reg_owned) {
+                    release_register(&cctx->regs, then_result.reg); /* temporarily release */
+                }
+
+                CompileResult else_result = compile(cctx, else_form, then_result.reg);
+                assert(then_result.type == else_result.type);
+                if (then_result.reg != else_result.reg) {
+                    reserve_register(&cctx->regs, then_result.reg);
+                    emit_op2(cctx, OP_MOVE, then_result.reg, else_result.reg);
+                    if (else_result.reg_owned) {
+                        release_register(&cctx->regs, else_result.reg);
+                    }
+                }
                 emit_label(cctx, end_label);
 
-                assert(then_type == else_type);
-                return then_type;
+                return then_result;
             }
 
             if (head.val.symbol_ptr == symbol_assign) {
@@ -1090,51 +1256,47 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
                     assert(0 && "not found");
                 }
 
-
-                uint32_t reg = cctx->stack_offset++;
-                const Type *val_type = compile(cctx, val_form, reg);
-                --cctx->stack_offset;
-
-                emit_op2(cctx, OP_MOVE, binding->reg, reg);
-
-                return type_unit;
+                CompileResult val_result = compile(cctx, val_form, binding->reg);
+                if (val_result.reg != binding->reg) {
+                    emit_op2(cctx, OP_MOVE, binding->reg, val_result.reg);
+                    if (val_result.reg_owned) {
+                        release_register(&cctx->regs, val_result.reg);
+                    }
+                }
+                return val_result;
             }
 
-            if (head.val.symbol_ptr == symbol_plus) {
-                Any temp = cdr(form);
-                Any a = car(temp);
-                temp = cdr(temp);
-                Any b = car(temp);
-
-                uint32_t a_reg = cctx->stack_offset++;
-                uint32_t b_reg = cctx->stack_offset++;
-                const Type *a_type = compile(cctx, a, a_reg);
-                const Type *b_type = compile(cctx, b, b_reg);
-                cctx->stack_offset -= 2;
-
-                assert(a_type == b_type);
-                assert(a_type->kind >= KIND_U8 && a_type->kind <= KIND_F64);
-                emit_op3(cctx, OP_ADD_U8 + (a_type->kind - KIND_U8), dst_reg, a_reg, b_reg);
-                return a_type;
-            }
+            if (head.val.symbol_ptr == symbol_plus) { return compile_bin_op(cctx, form, dst_reg_hint, OP_ADD_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_minus) { return compile_bin_op(cctx, form, dst_reg_hint, OP_SUB_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_mul) { return compile_bin_op(cctx, form, dst_reg_hint, OP_MUL_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_div) { return compile_bin_op(cctx, form, dst_reg_hint, OP_DIV_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_mod) { return compile_bin_op(cctx, form, dst_reg_hint, OP_MOD_U8, KIND_I64); }
+            if (head.val.symbol_ptr == symbol_eq) { return compile_bin_op(cctx, form, dst_reg_hint, OP_EQ_BOOL, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_lt) { return compile_bin_op(cctx, form, dst_reg_hint, OP_LT_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_gt) { return compile_bin_op(cctx, form, dst_reg_hint, OP_GT_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_lteq) { return compile_bin_op(cctx, form, dst_reg_hint, OP_LTEQ_U8, KIND_F64); }
+            if (head.val.symbol_ptr == symbol_gteq) { return compile_bin_op(cctx, form, dst_reg_hint, OP_GTEQ_U8, KIND_F64); }
 
             if (head.val.symbol_ptr == symbol_print) {
                 Any temp = cdr(form);
                 Any val_form = car(temp);
 
-                uint32_t reg = cctx->stack_offset++;
-                const Type *val_type = compile(cctx, val_form, reg);
-                --cctx->stack_offset;
+                CompileResult val_result = compile(cctx, val_form, ANY_REG);
 
-                assert(val_type->kind >= KIND_BOOL && val_type->kind <= KIND_PTR);
-                emit_op1(cctx, OP_PRINT_BOOL + (val_type->kind - KIND_BOOL), reg);
-                return type_unit;
+                assert(val_result.type->kind >= KIND_BOOL && val_result.type->kind <= KIND_PTR);
+                emit_op1(cctx, OP_PRINT_BOOL + (val_result.type->kind - KIND_BOOL), val_result.reg);
+
+                if (val_result.reg_owned) {
+                    release_register(&cctx->regs, val_result.reg);
+                }
+
+                return (CompileResult) { type_unit, ANY_REG };
             }
         }
 
         /* call */
 
-        uint32_t form_count = list_length(form);
+        /*uint32_t form_count = list_length(form);
         uint32_t base_reg = cctx->stack_offset;
         cctx->stack_offset += form_count;
         
@@ -1150,29 +1312,25 @@ const Type *compile(CompilerCtx *cctx, Any form, uint32_t dst_reg) {
             const Type *arg_type = compile(cctx, arg_form, arg_reg);
         }
 
-        emit_call(cctx, callable_reg, dst_reg);
-        cctx->stack_offset -= form_count;
+        emit_call(cctx, callable_reg, dst_reg_hint);
+        cctx->stack_offset -= form_count;*/
+    }
+
+#define EMIT_PRIM(UNAME, LNAME, TYPE, FMT) \
+    case KIND_ ## UNAME: { \
+        bool reg_owned = false; \
+        uint32_t dst_reg = dst_reg_hint; \
+        if (dst_reg == ANY_REG) { \
+            dst_reg = alloc_register(&cctx->regs); \
+            reg_owned = true; \
+        } \
+        emit_lit_ ## LNAME(cctx, dst_reg, form.val.LNAME); \
+        return (CompileResult) { form_type, dst_reg, reg_owned }; \
     }
 
     switch (form_type->kind) {
-    case KIND_UNIT: return form_type;
-    case KIND_BOOL: emit_lit_b32(cctx, dst_reg, form.val.b32); return form_type;
-
-    case KIND_U8: emit_lit_u8(cctx, dst_reg, form.val.u8); return form_type;
-    case KIND_U16: emit_lit_u16(cctx, dst_reg, form.val.u16); return form_type;
-    case KIND_U32: emit_lit_u32(cctx, dst_reg, form.val.u32); return form_type;
-    case KIND_U64: emit_lit_u64(cctx, dst_reg, form.val.u64); return form_type;
-
-    case KIND_I8: emit_lit_i8(cctx, dst_reg, form.val.i8); return form_type;
-    case KIND_I16: emit_lit_i16(cctx, dst_reg, form.val.i16); return form_type;
-    case KIND_I32: emit_lit_i32(cctx, dst_reg, form.val.i32); return form_type;
-    case KIND_I64: emit_lit_i64(cctx, dst_reg, form.val.i64); return form_type;
-
-    case KIND_F32: emit_lit_f32(cctx, dst_reg, form.val.f32); return form_type;
-    case KIND_F64: emit_lit_f64(cctx, dst_reg, form.val.f64); return form_type;
-
-    case KIND_PTR:
-    case KIND_REF: emit_lit_ptr(cctx, dst_reg, form.val.ptr); return form_type;
+    case KIND_UNIT: return (CompileResult) { type_unit, ANY_REG };
+    FOR_ALL_PRIM(EMIT_PRIM)
     }
 
     assert(0 && "bad form");
@@ -1457,6 +1615,7 @@ void init_globals(void) {
     symbol_minus    = intern_symbol_cstr("-");
     symbol_mul      = intern_symbol_cstr("*");
     symbol_div      = intern_symbol_cstr("/");
+    symbol_mod      = intern_symbol_cstr("/");
     symbol_not      = intern_symbol_cstr("not");
     symbol_eq       = intern_symbol_cstr("==");
     symbol_lt       = intern_symbol_cstr("<");
@@ -1469,15 +1628,46 @@ void init_globals(void) {
 }
 
 
-#define sym(x) MAKE_ANY_SYM(intern_symbol_cstr(x))
+
+static uint64_t native_fib(uint32_t n) {
+    uint64_t a = 0;
+    uint64_t b = 1;
+    uint64_t temp;
+start:
+    --n;
+    if (n > 0) {
+        temp = b;
+        b = a + b;
+        a = temp;
+        goto start;
+    }
+    else {
+        goto end;
+    }
+end:
+    return b;
+}
+
+
+#define sym(x) MAKE_ANY_SYM(intern_symbol_cstr(#x))
 #define i32(x) MAKE_ANY_I32(x)
 #define u32(x) MAKE_ANY_U32(x)
+#define u64(x) MAKE_ANY_U64(x)
 #define nil ANY_UNIT
+#define list(...) make_list(__VA_ARGS__, nil)
+
 
 int main() {
     init_globals();
 
     printf("op count: %d\n\n", NUM_OPS);
+
+    printf("fib(5) = %llu\n", native_fib(5));
+
+    clock_t before = clock();
+    uint64_t res1 = native_fib(10000000);
+    printf("native_fib result = %llu\n", res1);
+    printf("native time: %u ms\n", (clock() - before) * 1000 / CLOCKS_PER_SEC);
 
     assert(ANY_KIND(ANY_UNIT) == KIND_UNIT);
     assert(ANY_KIND(ANY_TRUE) == KIND_BOOL);
@@ -1485,78 +1675,65 @@ int main() {
     assert(ANY_TYPE(ANY_UNIT) == type_unit);
     assert(ANY_TYPE(ANY_TRUE) == type_b32);
     assert(ANY_TYPE(ANY_FALSE) == type_b32);
-    assert(list_length(list(ANY_TRUE, ANY_FALSE, nil)) == 2);
+    assert(list_length(make_list(ANY_TRUE, ANY_FALSE, nil)) == 2);
     assert(intern_symbol_cstr("foo"));
     assert(intern_symbol_cstr("foo") == intern_symbol_cstr("foo"));
     assert(prim_type(KIND_U32, sizeof(uint32_t)));
     assert(prim_type(KIND_U32, sizeof(uint32_t)) == prim_type(KIND_U32, sizeof(uint32_t)));
 
+    ReservedRegs regs = { 0 };
+    assert(alloc_register(&regs) == 0);
+    assert(alloc_register(&regs) == 1);
+    reserve_register(&regs, 2);
+    assert(alloc_register(&regs) == 3);
+    release_register(&regs, 2);
+    assert(alloc_register(&regs) == 2);
+    for (uint32_t i = 4; i < 100; ++i) {
+        assert(alloc_register(&regs) == i);
+    }
+    reserve_register(&regs, 1000);
+    for (uint32_t i = 100; i < 1000; ++i) {
+        assert(alloc_register(&regs) == i);
+    }
+    assert(alloc_register(&regs) == 1001);
+    release_register(&regs, 1000);
+    assert(alloc_register(&regs) == 1000);
+
     Any code =
         list(
-            sym("let"),
+            sym(let),
             list(
-                sym("x"),
-                u32(44),
-                sym("y"),
-                u32(55),
-                nil
+                sym(n), u32(10000000),
+                sym(a), u64(0),
+                sym(b), u64(1),
+                sym(temp), u64(0)
             ),
             list(
-                sym("tagbody"),
-                sym("start"),
+                sym(tagbody),
+                sym(start),
+                list(sym(=), sym(n), list(sym(-), sym(n), u32(1))),
                 list(
-                    sym("="),
-                    sym("y"),
+                    sym(if),
+                    list(sym(>), sym(n), u32(0)),
                     list(
-                        sym("+"),
-                        sym("y"),
-                        u32(1),
-                        nil
+                        sym(tagbody),
+                        list(sym(=), sym(temp), sym(b)),
+                        list(sym(=), sym(b), list(sym(+), sym(a), sym(b))),
+                        list(sym(=), sym(a), sym(temp)),
+                        list(sym(go), sym(start))
                     ),
-                    nil
+                    list(sym(go), sym(end))
                 ),
-                list(
-                    sym("print"),
-                    list(
-                        sym("+"),
-                        sym("x"),
-                        sym("y"),
-                        nil
-                    ),
-                    nil
-                ),
-                list(
-                    sym("go"),
-                    sym("start"),
-                    nil
-                ),
-                nil
-            ),
-            nil
-        )
-        ;
+                sym(end),
+                list(sym(print), sym(b))
+            )
+        );
 
     CompilerCtx *cctx = calloc(1, sizeof(CompilerCtx));
     LabelMap_init(&cctx->label_map, 32);
     BindingMap_init(&cctx->binding_map, 32);
     
-    ++cctx->stack_offset; compile(cctx, code, 0);
-
-    /*const uint32_t top_label = gen_label(cctx);
-    const uint32_t I = 0;
-    const uint32_t ONE = 1;
-    const uint32_t MAX = 2;
-    const uint32_t TEMP = 3;
-
-    emit_lit_i32(cctx, I, 0);
-    emit_lit_i32(cctx, ONE, 1);
-    emit_lit_i32(cctx, MAX, 10);
-    emit_label(cctx, top_label);
-    emit_op1(cctx, OP_PRINT_I32, I);
-    emit_op3(cctx, OP_ADD_I32, I, I, ONE);
-    emit_op3(cctx, OP_LT_I32, TEMP, I, MAX);
-    emit_op2(cctx, OP_NOT_BOOL, TEMP, TEMP);
-    emit_jfalse(cctx, TEMP, top_label);*/
+    compile(cctx, code, 0);
     emit_ret(cctx);
 
     printf("\nbefore strip:\n");
@@ -1568,7 +1745,11 @@ int main() {
     print_code(cctx->code, cctx->code_used);
 
     fgetc(stdin);
-    uint64_t stack[1024]; interpret(cctx->code, stack);
+
+    uint64_t stack[1024];
+    before = clock();
+    interpret(cctx->code, stack);
+    printf("interpreted time: %u ms\n", (clock() - before) * 1000 / CLOCKS_PER_SEC);
 
     fgetc(stdin);
     return 0;
