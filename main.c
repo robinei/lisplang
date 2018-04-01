@@ -42,6 +42,25 @@ void print_form(Any form) {
     assert(0 && "missing printer");
 }
 
+static char *read_file(const char *filename) {
+    char *str;
+    uint32_t len;
+
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) {
+        return NULL;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    len = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    str = malloc(len + 1);
+    fread(str, 1, len, fp);
+    str[len] = 0;
+
+    return str;
+}
+
 
 static uint64_t native_fib(uint32_t n) {
     uint64_t a = 0;
@@ -89,24 +108,7 @@ int main(int argc, char *argv[]) {
     assert(ANY_TYPE(ANY_FALSE) == type_b32);
     assert(list_length(make_list(ANY_TRUE, ANY_FALSE, ANY_UNIT)) == 2);
 
-    const char *prog =
-        "(let (n %u a 0 b 1 temp 0)\n"
-        "  (tagbody\n"
-        "    start\n"
-        "    (= n (- n 1))\n"
-        "    (if (> n 0)\n"
-        "      (tagbody\n"
-        "        (= temp b)\n"
-        "        (= b (+ a b))\n"
-        "        (= a temp)"
-        "        (go start))\n"
-        "      (go end))\n"
-        "    end"
-        "    (print b)))\n";
-    char prog2[1000];
-    sprintf(prog2, prog, iters);
-
-    Any sexpr = read_cstr(prog2);
+    Any sexpr = read_cstr(read_file("test.lisp"));
 
     print_form(sexpr);
     printf("\n");

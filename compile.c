@@ -276,6 +276,7 @@ static void strip_labels(CompilerCtx *cctx) {
             switch (instr_word_count(code[in])) {
             case 1: code[out++] = code[in++]; break;
             case 2: code[out++] = code[in++]; code[out++] = code[in++]; break;
+            default: assert(0 && "bad instruction size");
             }
             break;
         }
@@ -468,9 +469,14 @@ const CompileResult compile(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint) 
                 temp = cdr(temp);
                 Any then_form = car(temp);
                 temp = cdr(temp);
-                Any else_form = car(temp);
-                temp = cdr(temp);
-                assert(ANY_KIND(temp) == KIND_UNIT);
+                Any else_form;
+                if (ANY_KIND(temp) != KIND_UNIT) {
+                    else_form = car(temp);
+                    temp = cdr(temp);
+                    assert(ANY_KIND(temp) == KIND_UNIT);
+                } else {
+                    else_form = ANY_UNIT;
+                }
 
                 uint32_t else_label = gen_label(cctx);
                 uint32_t end_label = gen_label(cctx);

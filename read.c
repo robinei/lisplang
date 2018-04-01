@@ -236,7 +236,7 @@ static Any read_number(ReadState *state) {
     const char *end;
     const char *start = state->text + state->pos;
     /* TODO: handle unsigned numbers */
-    uint64_t llval = (uint64_t)my_strtoll(start, &end, 0);
+    int64_t llval = my_strtoll(start, &end, 0);
     if (start == end) {
         read_error(state, "error parsing number");
     }
@@ -245,7 +245,7 @@ static Any read_number(ReadState *state) {
     }
     if (*end != '.') {
         state->pos += (int)(end - start);
-        return MAKE_ANY_U64(llval);
+        return MAKE_ANY_I32((int32_t)llval);
     }
     start = state->text + state->pos;
     double dval = my_strtod(start, &end);
@@ -256,7 +256,7 @@ static Any read_number(ReadState *state) {
         read_error(state, "number too large");
     }
     state->pos += (int)(end - start);
-    return MAKE_ANY_F64(dval);
+    return MAKE_ANY_F32((float)dval);
 }
 
 static Any read_form(ReadState *state);
