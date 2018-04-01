@@ -17,6 +17,8 @@
 #define DEF_GTEQ_ENUM(UNAME, LNAME, TYPE, FMT) OP_GTEQ_ ## UNAME,
 
 enum {
+    OP_NOP,
+    
     OP_LABEL, /* labels are eliminated during compilation */
 
     /* these specify a label. they will be replaced by the below */
@@ -36,7 +38,7 @@ enum {
     OP_MOVE,    /* move B to A */
 
     OP_NOT_BOOL,
-    
+
     FOR_ALL_PRIM(DEF_PRINT_ENUM)
     FOR_ALL_PRIM(DEF_LIT_ENUM)
     FOR_ALL_NUM(DEF_ADD_ENUM)

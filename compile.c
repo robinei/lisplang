@@ -240,36 +240,51 @@ static void strip_labels(CompilerCtx *cctx) {
     U32Map label_offsets;
     U32Map_init(&label_offsets, 128);
 
-    uint32_t i = 0;
+    /* map from labels directly preceding jumps, to the target labels of those jumps */
+    U32Map replace_jump_labels;
+    U32Map_init(&replace_jump_labels, 128);
+
+    uint32_t in = 0;
+    uint32_t out = 0;
     uint64_t *code = cctx->code;
-    uint32_t count = cctx->code_used;
 
-    cctx->code = NULL;
-    cctx->code_used = 0;
-    cctx->code_capacity = 0;
-
-    while (i < count) {
-        uint64_t instr = code[i];
-
-        if (INSTR_OP(instr) == OP_LABEL) {
-            U32Map_put(&label_offsets, INSTR_BC(instr), cctx->code_used);
-            ++i;
-        }
-        else {
-            switch (instr_word_count(instr)) {
-            case 1: emit(cctx, code[i++]); break;
-            case 2: emit(cctx, code[i++]); emit(cctx, code[i++]); break;
+    while (in < cctx->code_used) {
+        switch (INSTR_OP(code[in])) {
+        case OP_NOP:
+            ++in;
+            break;
+        case OP_LABEL: {
+            uint32_t label = INSTR_BC(code[in]);
+            U32Map_put(&label_offsets, label, out);
+            if (in < cctx->code_used - 1 && INSTR_OP(code[in+1]) == OP_JUMP_LABEL) {
+                U32Map_put(&replace_jump_labels, label, INSTR_BC(code[in+1]));
+                printf("store label replacement: %u -> %u\n", label, INSTR_BC(code[in+1]));
             }
+            ++in;
+            break;
+        }
+        case OP_JUMP_LABEL:
+            if (out > 0 && INSTR_OP(code[out-1]) == OP_JUMP_LABEL) {
+                /* skip the jump, since nobody will jump here, and no control flow
+                will get here naturally since it is precededy by a jump */
+                ++in;
+            } else {
+                code[out++] = code[in++];
+            }
+            break;
+        default:
+            switch (instr_word_count(code[in])) {
+            case 1: code[out++] = code[in++]; break;
+            case 2: code[out++] = code[in++]; code[out++] = code[in++]; break;
+            }
+            break;
         }
     }
 
-    free(code);
+    cctx->code_used = out;
 
-    i = 0;
-    code = cctx->code;
-    count = cctx->code_used;
-
-    while (i < count) {
+    uint32_t i = 0;
+    while (i < cctx->code_used) {
         uint64_t instr = code[i];
         uint32_t new_op;
 
@@ -280,8 +295,11 @@ static void strip_labels(CompilerCtx *cctx) {
         default: i += instr_word_count(instr); continue;
         }
 
+        uint32_t label = INSTR_BC(instr);
+        while (U32Map_get(&replace_jump_labels, label, &label)) {}
+
         uint32_t abs_offset;
-        if (!U32Map_get(&label_offsets, INSTR_BC(instr), &abs_offset)) {
+        if (!U32Map_get(&label_offsets, label, &abs_offset)) {
             assert(0 && "label unexpectedly not found");
         }
         int32_t rel_offset = (int32_t)abs_offset - i;
@@ -290,6 +308,7 @@ static void strip_labels(CompilerCtx *cctx) {
     }
 
     U32Map_free(&label_offsets);
+    U32Map_free(&replace_jump_labels);
 }
 
 

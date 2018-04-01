@@ -30,6 +30,7 @@
         NULL, \
         NULL, \
         NULL, \
+        NULL, \
         &&label_OP_JUMP, \
         &&label_OP_JFALSE, \
         &&label_OP_JTRUE, \
