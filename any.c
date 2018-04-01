@@ -84,12 +84,16 @@ static void *rc_alloc(uint32_t size) {
     return rc_ptr + 1;
 }
 
-Any string(const char *str) {
+Any make_string(const char *str) {
     uint32_t len = (uint32_t)strlen(str);
     U8Array *s = rc_alloc(sizeof(U8Array) + len + 1);
     s->length = len;
     memcpy(s->data, str, len + 1);
     return (Any) { .type = MK_ANY_TYPE(type_ref_string), .val.u8_array_ptr = s };
+}
+
+Any make_symbol(const char *str) {
+    return MAKE_ANY_SYM(intern_symbol_cstr(str));
 }
 
 Any cons(Any car, Any cdr) {

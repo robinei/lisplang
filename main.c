@@ -3,10 +3,44 @@
 #include <string.h>
 #include <time.h>
 
-#include "types.h"
 #include "any.h"
+#include "read.h"
 #include "compile.h"
 #include "interpret.h"
+
+
+#define DEF_VAL_PRINTER(UNAME, LNAME, TYPE, FMT) case KIND_ ## UNAME: printf(FMT, form.val.LNAME); return;
+
+void print_form(Any form) {
+    const Type *type = ANY_TYPE(form);
+    if (type == type_ref_string) {
+        printf("\"%s\"", form.val.u8_array_ptr->data);
+        return;
+    }
+    if (type == type_ptr_symbol) {
+        printf("%s", form.val.symbol_ptr->name->data);
+        return;
+    }
+    if (type == type_ref_cons) {
+        printf("(");
+        bool printed_one = false;
+        while (ANY_KIND(form) != KIND_UNIT) {
+            if (printed_one) {
+                printf(" ");
+            }
+            print_form(car(form));
+            form = cdr(form);
+            printed_one = true;
+        }
+        printf(")");
+        return;
+    }
+    switch (ANY_KIND(form)) {
+    case KIND_UNIT: printf("()"); return;
+    FOR_ALL_PRIM(DEF_VAL_PRINTER)
+    }
+    assert(0 && "missing printer");
+}
 
 
 static uint64_t native_fib(uint32_t n) {
@@ -27,14 +61,6 @@ start:
 end:
     return b;
 }
-
-
-#define sym(x) MAKE_ANY_SYM(intern_symbol_cstr(#x))
-#define i32(x) MAKE_ANY_I32(x)
-#define u32(x) MAKE_ANY_U32(x)
-#define u64(x) MAKE_ANY_U64(x)
-#define nil ANY_UNIT
-#define list(...) make_list(__VA_ARGS__, nil)
 
 
 int main(int argc, char *argv[]) {
@@ -61,38 +87,30 @@ int main(int argc, char *argv[]) {
     assert(ANY_TYPE(ANY_UNIT) == type_unit);
     assert(ANY_TYPE(ANY_TRUE) == type_b32);
     assert(ANY_TYPE(ANY_FALSE) == type_b32);
-    assert(list_length(make_list(ANY_TRUE, ANY_FALSE, nil)) == 2);
+    assert(list_length(make_list(ANY_TRUE, ANY_FALSE, ANY_UNIT)) == 2);
 
-    Any sexpr =
-        list(
-            sym(let),
-            list(
-                sym(n), u32(iters),
-                sym(a), u64(0),
-                sym(b), u64(1),
-                sym(temp), u64(0)
-            ),
-            list(
-                sym(tagbody),
-                sym(start),
-                list(sym(=), sym(n), list(sym(-), sym(n), u32(1))),
-                list(
-                    sym(if),
-                    list(sym(>), sym(n), u32(0)),
-                    list(
-                        sym(tagbody),
-                        list(sym(=), sym(temp), sym(b)),
-                        list(sym(=), sym(b), list(sym(+), sym(a), sym(b))),
-                        list(sym(=), sym(a), sym(temp)),
-                        list(sym(go), sym(start))
-                    ),
-                    list(sym(go), sym(end))
-                ),
-                sym(end),
-                list(sym(print), sym(b))
-            )
-        );
-    
+    const char *prog =
+        "(let (n %u a 0 b 1 temp 0)\n"
+        "  (tagbody\n"
+        "    start\n"
+        "    (= n (- n 1))\n"
+        "    (if (> n 0)\n"
+        "      (tagbody\n"
+        "        (= temp b)\n"
+        "        (= b (+ a b))\n"
+        "        (= a temp)"
+        "        (go start))\n"
+        "      (go end))\n"
+        "    end"
+        "    (print b)))\n";
+    char prog2[1000];
+    sprintf(prog2, prog, iters);
+
+    Any sexpr = read_cstr(prog2);
+
+    print_form(sexpr);
+    printf("\n");
+
     CodeBlock block = compile_block(sexpr);
 
     Word stack[1024];

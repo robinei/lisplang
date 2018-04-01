@@ -26,6 +26,7 @@
     <ClInclude Include="..\instr.h" />
     <ClInclude Include="..\interpret.h" />
     <ClInclude Include="..\murmur3.h" />
+    <ClInclude Include="..\read.h" />
     <ClInclude Include="..\symbol.h" />
     <ClInclude Include="..\types.h" />
   </ItemGroup>
@@ -36,6 +37,9 @@
     <ClCompile Include="..\interpret.c" />
     <ClCompile Include="..\main.c" />
     <ClCompile Include="..\murmur3.c" />
+    <ClCompile Include="..\read.c" />
+    <ClCompile Include="..\strtod.c" />
+    <ClCompile Include="..\strtoll.c" />
     <ClCompile Include="..\symbol.c" />
     <ClCompile Include="..\types.c" />
   </ItemGroup>

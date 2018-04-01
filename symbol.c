@@ -43,8 +43,8 @@ const Symbol *intern_symbol(const char *str, uint32_t length) {
     Symbol *sym = malloc(sizeof(Symbol));
     sym->name = malloc(sizeof(U8Array) + length + 1);
     sym->hash = StrSlice_hash(slice);
-    sym->name->length = length;
     memcpy(sym->name->data, str, length);
+    sym->name->length = length;
     sym->name->data[length] = 0;
     slice.str = sym->name->data;
     SymMap_put(&symbolmap, slice, sym);
