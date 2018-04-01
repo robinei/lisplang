@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stddef.h>
 #include <string.h>
 #include <assert.h>
 #include <time.h>
@@ -450,14 +452,14 @@ Any array_set(Any arr, Any idx, Any val) {
 
 #define PROPS_UNIT(X)   X(UNIT, unit, uint32_t, "unit")
 #define PROPS_BOOL(X)   X(BOOL,  b32, bool,     "%u")
-#define PROPS_U8(X)     X(U8,     u8, uint8_t,  "%u")
-#define PROPS_U16(X)    X(U16,   u16, uint16_t, "%u")
-#define PROPS_U32(X)    X(U32,   u32, uint32_t, "%u")
-#define PROPS_U64(X)    X(U64,   u64, uint64_t, "%llu")
-#define PROPS_I8(X)     X(I8,     i8, int8_t,   "%d")
-#define PROPS_I16(X)    X(I16,   i16, int16_t,  "%d")
-#define PROPS_I32(X)    X(I32,   i32, int32_t,  "%d")
-#define PROPS_I64(X)    X(I64,   i64, int64_t,  "%lld")
+#define PROPS_U8(X)     X(U8,     u8, uint8_t,  "%"SCNu8)
+#define PROPS_U16(X)    X(U16,   u16, uint16_t, "%"SCNu16)
+#define PROPS_U32(X)    X(U32,   u32, uint32_t, "%"SCNu32)
+#define PROPS_U64(X)    X(U64,   u64, uint64_t, "%"SCNu64)
+#define PROPS_I8(X)     X(I8,     i8, int8_t,   "%"SCNd8)
+#define PROPS_I16(X)    X(I16,   i16, int16_t,  "%"SCNd16)
+#define PROPS_I32(X)    X(I32,   i32, int32_t,  "%"SCNd32)
+#define PROPS_I64(X)    X(I64,   i64, int64_t,  "%"SCNd64)
 #define PROPS_F32(X)    X(F32,   f32, float,    "%.2f")
 #define PROPS_F64(X)    X(F64,   f64, double,   "%.2f")
 #define PROPS_PTR(X)    X(PTR,   ptr, void *,   "%p")
@@ -1340,7 +1342,7 @@ const CompileResult compile(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint) 
 
 typedef struct StrSlice StrSlice;
 struct StrSlice {
-    const char *str;
+    const uint8_t *str;
     uint32_t length;
 };
 
@@ -1368,7 +1370,7 @@ typedef struct SymMap SymMap;
 static SymMap symbolmap;
 
 const Symbol *intern_symbol(const char *str, uint32_t length) {
-    StrSlice slice = { str, length };
+    StrSlice slice = { (const uint8_t *)str, length };
     {
         const Symbol *sym;
         if (SymMap_get(&symbolmap, slice, &sym)) {
@@ -1657,17 +1659,21 @@ end:
 #define list(...) make_list(__VA_ARGS__, nil)
 
 
-int main() {
+int main(int argc, char *argv[]) {
     init_globals();
 
+    uint32_t iters = 10000000;
+    if (argc > 1) {
+        iters = atoi(argv[1]);
+    }
     printf("op count: %d\n\n", NUM_OPS);
 
-    printf("fib(5) = %llu\n", native_fib(5));
+    printf("fib(5) = %"SCNu64"\n", native_fib(5));
 
     clock_t before = clock();
-    uint64_t res1 = native_fib(10000000);
-    printf("native_fib result = %llu\n", res1);
-    printf("native time: %u ms\n", (clock() - before) * 1000 / CLOCKS_PER_SEC);
+    uint64_t res1 = native_fib(iters);
+    printf("native_fib result = %"SCNu64"\n", res1);
+    printf("native time: %u ms\n", (uint32_t)((clock() - before) * 1000 / CLOCKS_PER_SEC));
 
     assert(ANY_KIND(ANY_UNIT) == KIND_UNIT);
     assert(ANY_KIND(ANY_TRUE) == KIND_BOOL);
@@ -1703,7 +1709,7 @@ int main() {
         list(
             sym(let),
             list(
-                sym(n), u32(10000000),
+                sym(n), u32(iters),
                 sym(a), u64(0),
                 sym(b), u64(1),
                 sym(temp), u64(0)
@@ -1749,7 +1755,7 @@ int main() {
     uint64_t stack[1024];
     before = clock();
     interpret(cctx->code, stack);
-    printf("interpreted time: %u ms\n", (clock() - before) * 1000 / CLOCKS_PER_SEC);
+    printf("interpreted time: %u ms\n", (uint32_t)((clock() - before) * 1000 / CLOCKS_PER_SEC));
 
     fgetc(stdin);
     return 0;
