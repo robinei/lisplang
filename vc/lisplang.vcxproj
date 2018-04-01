@@ -19,13 +19,25 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\any.h" />
+    <ClInclude Include="..\compile.h" />
     <ClInclude Include="..\fnv.h" />
     <ClInclude Include="..\hashtable.h" />
+    <ClInclude Include="..\instr.h" />
+    <ClInclude Include="..\interpret.h" />
     <ClInclude Include="..\murmur3.h" />
+    <ClInclude Include="..\symbol.h" />
+    <ClInclude Include="..\types.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\any.c" />
+    <ClCompile Include="..\compile.c" />
+    <ClCompile Include="..\instr.c" />
+    <ClCompile Include="..\interpret.c" />
     <ClCompile Include="..\main.c" />
     <ClCompile Include="..\murmur3.c" />
+    <ClCompile Include="..\symbol.c" />
+    <ClCompile Include="..\types.c" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
