@@ -25,37 +25,40 @@ typedef Any(*FunPtr1)(Any a);
 typedef Any(*FunPtr2)(Any a, Any b);
 typedef Any(*FunPtr3)(Any a, Any b, Any c);
 
+typedef union Word Word;
+union Word {
+    bool b32;
+
+    uint8_t u8;
+    uint16_t u16;
+    uint32_t u32;
+    uint64_t u64;
+
+    int8_t i8;
+    int16_t i16;
+    int32_t i32;
+    int64_t i64;
+
+    float f32;
+    double f64;
+
+    Type *type;
+
+    void *ptr;
+    char *char_ptr;
+    const Symbol *symbol_ptr;
+    Cons *cons_ptr;
+    U8Array *u8_array_ptr;
+
+    FunPtr0 fun0;
+    FunPtr1 fun1;
+    FunPtr2 fun2;
+    FunPtr3 fun3;
+};
+
 struct Any {
     uintptr_t type;
-    union {
-        bool b32;
-
-        uint8_t u8;
-        uint16_t u16;
-        uint32_t u32;
-        uint64_t u64;
-
-        int8_t i8;
-        int16_t i16;
-        int32_t i32;
-        int64_t i64;
-
-        float f32;
-        double f64;
-
-        Type *type;
-
-        void *ptr;
-        char *char_ptr;
-        const Symbol *symbol_ptr;
-        Cons *cons_ptr;
-        U8Array *u8_array_ptr;
-
-        FunPtr0 fun0;
-        FunPtr1 fun1;
-        FunPtr2 fun2;
-        FunPtr3 fun3;
-    } val;
+    Word val;
 };
 
 
@@ -319,7 +322,7 @@ void *rc_alloc(uint32_t size) {
 }
 
 Any string(const char *str) {
-    uint32_t len = strlen(str);
+    uint32_t len = (uint32_t)strlen(str);
     U8Array *s = rc_alloc(sizeof(U8Array) + len + 1);
     s->length = len;
     memcpy(s->data, str, len + 1);
@@ -640,44 +643,44 @@ enum {
 #endif
 
 #define DEFINE_PRINT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_PRINT_ ## UNAME)  printf("printed: " FMT "\n", *(TYPE  *)(fp + INSTR_A(instr))); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_PRINT_ ## UNAME)  printf("printed: " FMT "\n", fp[INSTR_A(instr)].LNAME); DISPATCH_NEXT();
 #define DEFINE_LIT_32_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LIT_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = (TYPE)INSTR_BC(instr); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LIT_ ## UNAME)   fp[INSTR_A(instr)].LNAME = (TYPE)INSTR_BC(instr); DISPATCH_NEXT();
 #define DEFINE_LIT_64_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LIT_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = (TYPE)*ip++; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LIT_ ## UNAME)   fp[INSTR_A(instr)].LNAME = (TYPE)*ip++; DISPATCH_NEXT();
 #define DEFINE_ADD_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_ADD_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) +  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_ADD_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME +  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_SUB_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_SUB_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) -  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_SUB_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME -  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_MUL_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_MUL_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) *  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MUL_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME *  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_DIV_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_DIV_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) /  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_DIV_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME /  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_MOD_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_MOD_ ## UNAME)   *(TYPE  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) %  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOD_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME %  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_EQ_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_EQ_ ## UNAME)    *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) == *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_EQ_ ## UNAME)    fp[INSTR_A(instr)].b32 = fp[INSTR_B(instr)].LNAME == fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_LT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LT_ ## UNAME)    *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) <  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LT_ ## UNAME)    fp[INSTR_A(instr)].b32 = fp[INSTR_B(instr)].LNAME <  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_GT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_GT_ ## UNAME)    *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) >  *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_GT_ ## UNAME)    fp[INSTR_A(instr)].b32 = fp[INSTR_B(instr)].LNAME >  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_LTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LTEQ_ ## UNAME)  *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) <= *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LTEQ_ ## UNAME)  fp[INSTR_A(instr)].b32 = fp[INSTR_B(instr)].LNAME <= fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 #define DEFINE_GTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_GTEQ_ ## UNAME)  *(bool  *)(fp + INSTR_A(instr)) = *(TYPE  *)(fp + INSTR_B(instr)) >= *(TYPE  *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_GTEQ_ ## UNAME)  fp[INSTR_A(instr)].b32 = fp[INSTR_B(instr)].LNAME >= fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
 
 static uint64_t *print_instr(uint64_t *code);
 
 
-void interpret(uint64_t *ip, uint64_t *fp) {
+void interpret(uint64_t *ip, Word *fp) {
     BEGIN_DISPATCH()
     DISPATCH_CASE(OP_JUMP) ip += (int32_t)INSTR_BC(instr) - 1; DISPATCH_NEXT();
-    DISPATCH_CASE(OP_JFALSE) if (!*(bool *)(fp + INSTR_A(instr))) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
-    DISPATCH_CASE(OP_JTRUE)  if ( *(bool *)(fp + INSTR_A(instr))) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
+    DISPATCH_CASE(OP_JFALSE) if (!fp[INSTR_A(instr)].b32) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
+    DISPATCH_CASE(OP_JTRUE)  if ( fp[INSTR_A(instr)].b32) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
 
     DISPATCH_CASE(OP_TCALL) {
         uint32_t fun_offset = INSTR_A(instr);
-        Function *fun = *(Function **)(fp + fun_offset);
+        Function *fun = (Function *)(fp + fun_offset)->ptr;
         fp += fun_offset;
         ip = fun->code; /* tail call means we just overwrite these, and don't grow the call stack */
         DISPATCH_NEXT();
@@ -685,19 +688,19 @@ void interpret(uint64_t *ip, uint64_t *fp) {
     DISPATCH_CASE(OP_CALL) {
         uint32_t fun_offset = INSTR_A(instr);
         uint32_t result_reg = INSTR_B(instr);
-        Function *fun = *(Function **)(fp + fun_offset);
+        Function *fun = (Function *)(fp + fun_offset)->ptr;
         interpret(fun->code, fp + fun_offset); /* just use the C call stack */
-        *(uint64_t *)(fp + result_reg) = *(uint64_t *)(fp + fun_offset);
+        fp[result_reg] = fp[fun_offset];
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_RET) return; /* since we use the C call stack we just return */
 
-    DISPATCH_CASE(OP_MOVE) *(uint64_t *)(fp + INSTR_A(instr)) = *(uint64_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOVE) fp[INSTR_A(instr)] = fp[INSTR_B(instr)]; DISPATCH_NEXT();
 
     FOR_ALL_PRIM(DEFINE_PRINT_INSTR)
     FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)
     FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR)
-    DISPATCH_CASE(OP_NOT_BOOL) *(bool *)(fp + INSTR_A(instr)) = !*(bool *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_NOT_BOOL) fp[INSTR_A(instr)].b32 = !fp[INSTR_B(instr)].b32; DISPATCH_NEXT();
     FOR_ALL_NUM(DEFINE_ADD_INSTR)
     FOR_ALL_NUM(DEFINE_SUB_INSTR)
     FOR_ALL_NUM(DEFINE_MUL_INSTR)
@@ -724,7 +727,7 @@ void interpret(uint64_t *ip, uint64_t *fp) {
 #define DEFINE_PRINT_LTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(LTEQ, lteq, UNAME, LNAME)
 #define DEFINE_PRINT_GTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GTEQ, gteq, UNAME, LNAME)
 #define PRINT_PRINT_LIT_32(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp32 = INSTR_BC(instr); printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp32); break;
-#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];       printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
+#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];         printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
 #define DEFINE_PRINT_PRINT(UNAME, LNAME, TYPE, FMT) case OP_PRINT_ ## UNAME: printf(INAME_FMT "r%u\n", "print/" #LNAME, INSTR_A(instr)); break;
 
 static uint64_t *print_instr(uint64_t *code) {
@@ -1718,7 +1721,7 @@ end:
 int main(int argc, char *argv[]) {
     init_globals();
 
-    uint32_t iters = 100000000;
+    uint32_t iters = 10000000;
     if (argc > 1) {
         iters = atoi(argv[1]);
     }
@@ -1808,7 +1811,7 @@ int main(int argc, char *argv[]) {
 
     fgetc(stdin);
 
-    uint64_t stack[1024];
+    Word stack[1024];
     before = clock();
     interpret(cctx->code, stack);
     printf("interpreted time: %u ms\n", (uint32_t)((clock() - before) * 1000 / CLOCKS_PER_SEC));
