@@ -650,8 +650,236 @@ void interpret(uint64_t *ip, uint64_t *fp) {
         FOR_ALL_NUM(DEFINE_GTEQ_INSTR)
         }
     }
-
 }
+
+
+
+
+typedef struct InterpreterState InterpreterState;
+typedef struct DecodedInstr DecodedInstr;
+typedef union DecodedData DecodedData;
+typedef bool(*OpFunc)(InterpreterState *state, DecodedData data);
+
+union DecodedData {
+    struct {
+        uint32_t bc;
+        uint16_t a;
+    } a_bc;
+    struct {
+        uint16_t a;
+        uint16_t b;
+        uint16_t c;
+    } a_b_c;
+    struct {
+        uint64_t extra;
+        uint16_t a;
+    } a_extra;
+};
+
+struct DecodedInstr {
+    OpFunc func;
+    DecodedData data;
+};
+
+#define MK_DECODED_A_BC(A, BC) ((DecodedData) { .a_bc.a = A, .a_bc.bc = BC })
+#define MK_DECODED_A_B_C(A, B, C) ((DecodedData) { .a_b_c.a = A, .a_b_c.b = B, .a_b_c.c = C })
+#define MK_DECODED_A_EXTRA(A, EXTRA) ((DecodedData) { .a_extra.a = A, .a_extra.extra = EXTRA })
+
+struct InterpreterState {
+    uint64_t *fp;
+    DecodedInstr *ip;
+
+    uint32_t code_used;
+    uint32_t code_capacity;
+    DecodedInstr *code;
+};
+
+static bool instr_handler_jump(InterpreterState *state, DecodedData data) {
+    state->ip += (int32_t)data.a_bc.bc;
+    return false;
+}
+static bool instr_handler_jfalse(InterpreterState *state, DecodedData data) {
+    if (*(bool *)(state->fp + data.a_bc.a)) {
+        ++state->ip;
+        return true;
+    }
+    state->ip += (int32_t)data.a_bc.bc;
+    return false;
+}
+static bool instr_handler_jtrue(InterpreterState *state, DecodedData data) {
+    if (!*(bool *)(state->fp + data.a_bc.a)) {
+        ++state->ip;
+        return true;
+    }
+    state->ip += (int32_t)data.a_bc.bc;
+    return false;
+}
+static bool instr_handler_ret(InterpreterState *state, DecodedData data) {
+    state->ip = state->code + state->code_used;
+    return false;
+}
+static bool instr_handler_move(InterpreterState *state, DecodedData data) {
+    *(uint64_t *)(state->fp + data.a_b_c.a) = *(uint64_t *)(state->fp + data.a_b_c.b);
+    ++state->ip;
+    return true;
+}
+static bool instr_handler_not_b32(InterpreterState *state, DecodedData data) {
+    *(bool *)(state->fp + data.a_b_c.a) = !*(bool *)(state->fp + data.a_b_c.b);
+    ++state->ip;
+    return true;
+}
+
+static void emit_decoded_instr(InterpreterState *state, OpFunc func, DecodedData data) {
+    if (state->code_used == state->code_capacity) {
+        state->code_capacity = state->code_capacity ? state->code_capacity * 2 : 64;
+        state->code = realloc(state->code, sizeof(DecodedInstr) * state->code_capacity);
+    }
+    state->code[state->code_used].func = func;
+    state->code[state->code_used++].data = data;
+}
+
+#define DEFINE_PRINT_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_print_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        printf("printed: " FMT "\n", *(TYPE  *)(state->fp + data.a_b_c.a)); ++state->ip; return true; }
+#define DEFINE_LIT_32_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_lit_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_bc.a) = (TYPE)data.a_bc.bc; ++state->ip; return true; }
+#define DEFINE_LIT_64_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_lit_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_extra.a) = (TYPE)data.a_extra.extra; ++state->ip; return true; }
+#define DEFINE_ADD_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_add_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) +  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_SUB_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_sub_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) -  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_MUL_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_mul_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) *  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_DIV_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_div_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) /  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_MOD_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_mod_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(TYPE  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) %  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_EQ_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_eq_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(bool  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) == *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_LT_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_lt_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(bool  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) <  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_GT_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_gt_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(bool  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) >  *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_LTEQ_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_lteq_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(bool  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) <= *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+#define DEFINE_GTEQ_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    static bool instr_handler_gteq_ ## LNAME(InterpreterState *state, DecodedData data) { \
+        *(bool  *)(state->fp + data.a_b_c.a) = *(TYPE  *)(state->fp + data.a_b_c.b) >= *(TYPE  *)(state->fp + data.a_b_c.c); ++state->ip; return true; }
+
+#define INVOKE_PRINT_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_PRINT_ ## UNAME: emit_decoded_instr(state, instr_handler_print_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), 0, 0)); break;
+#define INVOKE_LIT_32_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_LIT_ ## UNAME: emit_decoded_instr(state, instr_handler_lit_ ## LNAME, MK_DECODED_A_BC(INSTR_A(instr), INSTR_BC(instr))); break;
+#define INVOKE_LIT_64_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_LIT_ ## UNAME: emit_decoded_instr(state, instr_handler_lit_ ## LNAME, MK_DECODED_A_EXTRA(INSTR_A(instr), bytecode[i++])); break;
+#define INVOKE_ADD_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_ADD_ ## UNAME: emit_decoded_instr(state, instr_handler_add_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_SUB_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_SUB_ ## UNAME: emit_decoded_instr(state, instr_handler_sub_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_MUL_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_MUL_ ## UNAME: emit_decoded_instr(state, instr_handler_mul_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_DIV_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_DIV_ ## UNAME: emit_decoded_instr(state, instr_handler_div_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_MOD_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_MOD_ ## UNAME: emit_decoded_instr(state, instr_handler_mod_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_EQ_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_EQ_ ## UNAME: emit_decoded_instr(state, instr_handler_eq_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_LT_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_LT_ ## UNAME: emit_decoded_instr(state, instr_handler_lt_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_GT_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_GT_ ## UNAME: emit_decoded_instr(state, instr_handler_gt_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_LTEQ_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_LTEQ_ ## UNAME: emit_decoded_instr(state, instr_handler_lteq_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+#define INVOKE_GTEQ_INSTR_HANDLER(UNAME, LNAME, TYPE, FMT) \
+    case OP_GTEQ_ ## UNAME: emit_decoded_instr(state, instr_handler_gteq_ ## LNAME, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), INSTR_C(instr))); break;
+
+FOR_ALL_PRIM(DEFINE_PRINT_INSTR_HANDLER)
+FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR_HANDLER)
+FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_ADD_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_SUB_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_MUL_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_DIV_INSTR_HANDLER)
+FOR_ALL_INT(DEFINE_MOD_INSTR_HANDLER)
+FOR_ALL_PRIM(DEFINE_EQ_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_LT_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_GT_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_LTEQ_INSTR_HANDLER)
+FOR_ALL_NUM(DEFINE_GTEQ_INSTR_HANDLER)
+
+void load_bytecode(InterpreterState *state, uint64_t *bytecode, uint32_t length) {
+    uint32_t i = 0;
+    while (i < length) {
+        uint64_t instr = bytecode[i++];
+        switch (INSTR_OP(instr)) {
+        case OP_JUMP: emit_decoded_instr(state, instr_handler_jump, MK_DECODED_A_BC(0, INSTR_BC(instr))); break;
+        case OP_JFALSE: emit_decoded_instr(state, instr_handler_jfalse, MK_DECODED_A_BC(INSTR_A(instr), INSTR_BC(instr))); break;
+        case OP_JTRUE: emit_decoded_instr(state, instr_handler_jtrue, MK_DECODED_A_BC(INSTR_A(instr), INSTR_BC(instr))); break;
+        case OP_RET: emit_decoded_instr(state, instr_handler_ret, MK_DECODED_A_BC(0, 0)); break;
+        case OP_MOVE: emit_decoded_instr(state, instr_handler_move, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), 0)); break;
+        case OP_NOT_BOOL: emit_decoded_instr(state, instr_handler_not_b32, MK_DECODED_A_B_C(INSTR_A(instr), INSTR_B(instr), 0)); break;
+
+        FOR_ALL_PRIM(INVOKE_PRINT_INSTR_HANDLER)
+        FOR_ALL_PRIM_32(INVOKE_LIT_32_INSTR_HANDLER)
+        FOR_ALL_PRIM_64(INVOKE_LIT_64_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_ADD_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_SUB_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_MUL_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_DIV_INSTR_HANDLER)
+        FOR_ALL_INT(INVOKE_MOD_INSTR_HANDLER)
+        FOR_ALL_PRIM(INVOKE_EQ_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_LT_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_GT_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_LTEQ_INSTR_HANDLER)
+        FOR_ALL_NUM(INVOKE_GTEQ_INSTR_HANDLER)
+        }
+    }
+}
+
+void interpret2(InterpreterState *state) {
+    DecodedInstr *code_end = state->code + state->code_used;
+    state->ip = state->code;
+    for (;;) {
+        DecodedInstr *ip = state->ip;
+        if (ip < code_end) {
+            if (ip[0].func(state, ip[0].data)) {
+                if (ip[1].func(state, ip[1].data)) {
+                    if (ip[2].func(state, ip[2].data)) {
+                        if (ip[3].func(state, ip[3].data)) {
+                            if (ip[4].func(state, ip[4].data)) {
+                                if (ip[5].func(state, ip[5].data)) {
+                                    if (ip[6].func(state, ip[6].data)) {
+                                        if (ip[7].func(state, ip[7].data)) {
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else {
+            return;
+        }
+    }
+}
+
+
+
 
 #define INAME_FMT "%-12s"
 #define PRINT_OP3(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "r%u <- r%u r%u\n", #LOP "/" #LNAME, INSTR_A(instr), INSTR_B(instr), INSTR_C(instr)); break;
@@ -1747,9 +1975,18 @@ int main() {
     fgetc(stdin);
 
     uint64_t stack[1024];
+
     before = clock();
     interpret(cctx->code, stack);
     printf("interpreted time: %u ms\n", (clock() - before) * 1000 / CLOCKS_PER_SEC);
+
+    InterpreterState *state = calloc(1, sizeof(InterpreterState));
+    state->fp = stack;
+    load_bytecode(state, cctx->code, cctx->code_used);
+
+    before = clock();
+    interpret2(state);
+    printf("interpreted time 2: %u ms\n", (clock() - before) * 1000 / CLOCKS_PER_SEC);
 
     fgetc(stdin);
     return 0;
