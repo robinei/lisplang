@@ -1,6 +1,7 @@
-/.vs/
-/Debug/
-/Release/
+/vc/.vs/
+/vc/x64/
+/vc/Debug/
+/vc/Release/
 /*.exe
 /*.o
 /lisplang
