@@ -65,6 +65,8 @@
 
 /* Fallback regular switch interpreter */
 
+#pragma message ("WARNING: Falling back to slower interpreter (missing computed goto support)")
+
 #define DISPATCH_CASE(OPNAME) case OPNAME:
 
 #define DISPATCH_NEXT() continue;
