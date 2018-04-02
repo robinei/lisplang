@@ -1,12 +1,12 @@
 
-(let (n 10000000
+(let (n 100000000
       a 0
       b 1
-      temp 0)
+      temp 0
+      zero 0)
     (tagbody
       start
-        (= n (- n 1))
-        (if (> n 0)
+        (if (> (dec n) zero)
             (tagbody
                 (= temp b)
                 (= b (+ a b))

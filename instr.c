@@ -3,7 +3,13 @@
 #include <stdio.h>
 
 #define INAME_FMT "%-12s"
+#define PRINT_OP1(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "r%u\n", #LOP "/" #LNAME, INSTR_A(instr)); break;
 #define PRINT_OP3(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "r%u <- r%u r%u\n", #LOP "/" #LNAME, INSTR_A(instr), INSTR_B(instr), INSTR_C(instr)); break;
+#define DEFINE_PRINT_PRINT(UNAME, LNAME, TYPE, FMT) PRINT_OP1(PRINT, print, UNAME, LNAME)
+#define PRINT_PRINT_LIT_32(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp32 = INSTR_BC(instr); printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp32); break;
+#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];         printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
+#define DEFINE_PRINT_INC(UNAME, LNAME, TYPE, FMT) PRINT_OP1(INC, inc, UNAME, LNAME)
+#define DEFINE_PRINT_DEC(UNAME, LNAME, TYPE, FMT) PRINT_OP1(DEC, dec, UNAME, LNAME)
 #define DEFINE_PRINT_ADD(UNAME, LNAME, TYPE, FMT) PRINT_OP3(ADD, add, UNAME, LNAME)
 #define DEFINE_PRINT_SUB(UNAME, LNAME, TYPE, FMT) PRINT_OP3(SUB, sub, UNAME, LNAME)
 #define DEFINE_PRINT_MUL(UNAME, LNAME, TYPE, FMT) PRINT_OP3(MUL, mul, UNAME, LNAME)
@@ -14,9 +20,7 @@
 #define DEFINE_PRINT_GT(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GT, gt, UNAME, LNAME)
 #define DEFINE_PRINT_LTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(LTEQ, lteq, UNAME, LNAME)
 #define DEFINE_PRINT_GTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GTEQ, gteq, UNAME, LNAME)
-#define PRINT_PRINT_LIT_32(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp32 = INSTR_BC(instr); printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp32); break;
-#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];         printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
-#define DEFINE_PRINT_PRINT(UNAME, LNAME, TYPE, FMT) case OP_PRINT_ ## UNAME: printf(INAME_FMT "r%u\n", "print/" #LNAME, INSTR_A(instr)); break;
+
 
 uint64_t *print_instr(uint64_t *code) {
     uint32_t temp32;
@@ -38,6 +42,8 @@ uint64_t *print_instr(uint64_t *code) {
     FOR_ALL_PRIM(DEFINE_PRINT_PRINT)
     FOR_ALL_PRIM_32(PRINT_PRINT_LIT_32)
     FOR_ALL_PRIM_64(PRINT_PRINT_LIT_64)
+    FOR_ALL_INT(DEFINE_PRINT_INC)
+    FOR_ALL_INT(DEFINE_PRINT_DEC)
     FOR_ALL_NUM(DEFINE_PRINT_ADD)
     FOR_ALL_NUM(DEFINE_PRINT_SUB)
     FOR_ALL_NUM(DEFINE_PRINT_MUL)

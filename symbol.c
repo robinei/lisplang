@@ -65,6 +65,8 @@ void init_symbols(void) {
     symbol_def      = intern_symbol_cstr("def");
     symbol_do       = intern_symbol_cstr("do");
     symbol_assign   = intern_symbol_cstr("=");
+    symbol_inc      = intern_symbol_cstr("inc");
+    symbol_dec      = intern_symbol_cstr("dec");
     symbol_plus     = intern_symbol_cstr("+");
     symbol_minus    = intern_symbol_cstr("-");
     symbol_mul      = intern_symbol_cstr("*");

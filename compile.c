@@ -355,6 +355,23 @@ static CompileResult compile_bin_op(CompilerCtx *cctx, Any form, uint32_t dst_re
     return (CompileResult) { a_result.type, dst_reg, reg_owned };
 }
 
+static CompileResult compile_inc_dec(CompilerCtx *cctx, Any form, uint32_t base_op) {
+    Any temp = cdr(form);
+    Any sym_form = car(temp);
+    temp = cdr(temp);
+    assert(ANY_KIND(temp) == KIND_UNIT);
+    assert(ANY_TYPE(sym_form) == type_ptr_symbol);
+
+    Binding *binding;
+    if (!BindingMap_get(&cctx->binding_map, sym_form.val.symbol_ptr, &binding)) {
+        assert(0 && "not found");
+    }
+
+    assert(binding->type->kind >= KIND_U8 && binding->type->kind <= KIND_I64);
+    emit_op1(cctx, base_op + (binding->type->kind - KIND_U8), binding->reg);
+    return (CompileResult) { binding->type, binding->reg };
+}
+
 const CompileResult compile(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint) {
     const Type *form_type = ANY_TYPE(form);
 
@@ -531,6 +548,9 @@ const CompileResult compile(CompilerCtx *cctx, Any form, uint32_t dst_reg_hint) 
                 }
                 return val_result;
             }
+
+            if (head.val.symbol_ptr == symbol_inc) { return compile_inc_dec(cctx, form, OP_INC_U8); }
+            if (head.val.symbol_ptr == symbol_dec) { return compile_inc_dec(cctx, form, OP_DEC_U8); }
 
             if (head.val.symbol_ptr == symbol_plus) { return compile_bin_op(cctx, form, dst_reg_hint, OP_ADD_U8, KIND_F64); }
             if (head.val.symbol_ptr == symbol_minus) { return compile_bin_op(cctx, form, dst_reg_hint, OP_SUB_U8, KIND_F64); }
