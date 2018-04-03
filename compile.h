@@ -10,12 +10,20 @@
 #include "hashtable.h"
 typedef struct LabelMap LabelMap;
 
+typedef struct StackLoc StackLoc;
+struct StackLoc {
+    uint32_t offset;
+    uint32_t size;
+};
+
 typedef struct Binding Binding;
 struct Binding {
-    Any value;
     const Symbol *symbol;
     const Type *type;
+    struct AstNode *init_node;
+    StackLoc loc;
     uint32_t reg;
+    uint32_t store_count;
 };
 
 #define EXPAND_INTERFACE
@@ -37,13 +45,6 @@ struct PrevBinding {
     Binding *binding;
 };
 
-typedef struct ReservedRegs ReservedRegs;
-struct ReservedRegs {
-    uint32_t words_used;
-    uint32_t words_capacity;
-    uint64_t *words;
-};
-
 typedef struct CompilerCtx CompilerCtx;
 struct CompilerCtx {
     uint64_t *code;
@@ -61,17 +62,7 @@ struct CompilerCtx {
     uint32_t binding_stack_used;
     uint32_t binding_stack_capacity;
 
-    ReservedRegs regs;
+    uint32_t stack_offset;
 };
-
-typedef struct CodeBlock CodeBlock;
-struct CodeBlock {
-    uint64_t *code;
-    uint32_t length;
-};
-
-CodeBlock compile_block(Any form);
-
-void init_compile(void);
 
 #endif

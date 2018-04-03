@@ -5,7 +5,7 @@
 
 #include "any.h"
 #include "read.h"
-#include "compile.h"
+#include "emit.h"
 #include "interpret.h"
 
 
@@ -62,10 +62,35 @@ static char *read_file(const char *filename) {
 }
 
 
-static uint64_t native_fib(uint32_t n) {
-    uint64_t a = 0;
-    uint64_t b = 1;
-    uint64_t temp;
+typedef struct CodeBlock CodeBlock;
+struct CodeBlock {
+    uint64_t *code;
+    uint32_t length;
+};
+
+CodeBlock compile_block(Any form) {
+    CompilerCtx cctx = {0};
+    LabelMap_init(&cctx.label_map, 32);
+    BindingMap_init(&cctx.binding_map, 32);
+
+    AstNode *ast = parse_form(&cctx, form, NULL);
+    emit_code_block(&cctx, ast);
+    
+    printf("\nbefore strip:\n");
+    print_code(cctx.code, cctx.code_used);
+
+    strip_labels(&cctx);
+
+    printf("\nafter strip:\n");
+    print_code(cctx.code, cctx.code_used);
+
+    return (CodeBlock) { cctx.code, cctx.code_used };
+}
+
+static uint64_t native_fib(int32_t n) {
+    int32_t a = 0;
+    int32_t b = 1;
+    int32_t temp;
 start:
     --n;
     if (n > 0) {
@@ -85,19 +110,18 @@ end:
 int main(int argc, char *argv[]) {
     init_types();
     init_symbols();
-    init_compile();
 
-    uint32_t iters = 10000000;
+    int32_t iters = 10000000;
     if (argc > 1) {
         iters = atoi(argv[1]);
     }
     printf("op count: %d\n\n", NUM_OPS);
 
-    printf("fib(5) = %"SCNu64"\n", native_fib(5));
+    printf("fib(5) = %"PRIu64"\n", native_fib(5));
 
     clock_t before = clock();
     uint64_t res1 = native_fib(iters);
-    printf("native_fib result = %"SCNu64"\n", res1);
+    printf("native_fib result = %"PRIu64"\n", res1);
     printf("native time: %u ms\n", (uint32_t)((clock() - before) * 1000 / CLOCKS_PER_SEC));
 
     assert(ANY_KIND(ANY_UNIT) == KIND_UNIT);
@@ -115,10 +139,12 @@ int main(int argc, char *argv[]) {
 
     CodeBlock block = compile_block(sexpr);
 
+#if 1
     Word stack[1024];
     before = clock();
     interpret(block.code, stack);
     printf("interpreted time: %u ms\n", (uint32_t)((clock() - before) * 1000 / CLOCKS_PER_SEC));
-    
+#endif
+
     return 0;
 }
