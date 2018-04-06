@@ -33,7 +33,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\any.c" />
-    <ClCompile Include="..\compile.c" />
     <ClCompile Include="..\emit.c" />
     <ClCompile Include="..\instr.c" />
     <ClCompile Include="..\interpret.c" />

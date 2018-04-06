@@ -37,7 +37,11 @@ enum {
     OP_CALL,    /* call function in A, store result in B */
     OP_RET,     /* return from function */
 
-    OP_MOVE,    /* move B to A */
+    /* move B to A */
+    OP_MOVE1,
+    OP_MOVE2,
+    OP_MOVE4,
+    OP_MOVE8,
 
     OP_NOT_BOOL,
 

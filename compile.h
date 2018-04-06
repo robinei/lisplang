@@ -10,19 +10,12 @@
 #include "hashtable.h"
 typedef struct LabelMap LabelMap;
 
-typedef struct StackLoc StackLoc;
-struct StackLoc {
-    uint32_t offset;
-    uint32_t size;
-};
-
 typedef struct Binding Binding;
 struct Binding {
     const Symbol *symbol;
     const Type *type;
     struct AstNode *init_node;
-    StackLoc loc;
-    uint32_t reg;
+    uint32_t frame_offset;
     uint32_t store_count;
 };
 

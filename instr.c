@@ -3,11 +3,11 @@
 #include <stdio.h>
 
 #define INAME_FMT "%-12s"
-#define PRINT_OP1(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "r%u\n", #LOP "/" #LNAME, INSTR_A(instr)); break;
-#define PRINT_OP3(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "r%u <- r%u r%u\n", #LOP "/" #LNAME, INSTR_A(instr), INSTR_B(instr), INSTR_C(instr)); break;
+#define PRINT_OP1(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "[%u]\n", #LOP "/" #LNAME, INSTR_A(instr)); break;
+#define PRINT_OP3(UOP, LOP, UNAME, LNAME) case OP_ ## UOP ## _ ## UNAME: printf(INAME_FMT "[%u] <- [%u] [%u]\n", #LOP "/" #LNAME, INSTR_A(instr), INSTR_B(instr), INSTR_C(instr)); break;
 #define DEFINE_PRINT_PRINT(UNAME, LNAME, TYPE, FMT) PRINT_OP1(PRINT, print, UNAME, LNAME)
-#define PRINT_PRINT_LIT_32(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp32 = INSTR_BC(instr); printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp32); break;
-#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];         printf(INAME_FMT "r%u <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
+#define PRINT_PRINT_LIT_32(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp32 = INSTR_BC(instr); printf(INAME_FMT "[%u] <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp32); break;
+#define PRINT_PRINT_LIT_64(UNAME, LNAME, TYPE, FMT) case OP_LIT_ ## UNAME: temp64 = code[1];         printf(INAME_FMT "[%u] <- " FMT "\n", "lit/" #LNAME, INSTR_A(instr), *(TYPE *)&temp64); return code + 2;;
 #define DEFINE_PRINT_INC(UNAME, LNAME, TYPE, FMT) PRINT_OP1(INC, inc, UNAME, LNAME)
 #define DEFINE_PRINT_DEC(UNAME, LNAME, TYPE, FMT) PRINT_OP1(DEC, dec, UNAME, LNAME)
 #define DEFINE_PRINT_ADD(UNAME, LNAME, TYPE, FMT) PRINT_OP3(ADD, add, UNAME, LNAME)
@@ -31,14 +31,17 @@ uint64_t *print_instr(uint64_t *code) {
     case OP_NOP: printf("nop\n"); break;
     case OP_LABEL: printf(":%u\n", INSTR_BC(instr)); break;
     case OP_JUMP_LABEL: printf(INAME_FMT ":%u\n", "jump", INSTR_BC(instr)); break;
-    case OP_JFALSE_LABEL: printf(INAME_FMT "r%u :%u\n", "jfalse", INSTR_A(instr), INSTR_BC(instr)); break;
-    case OP_JTRUE_LABEL: printf(INAME_FMT "r%u :%u\n", "jtrue", INSTR_A(instr), INSTR_BC(instr)); break;
+    case OP_JFALSE_LABEL: printf(INAME_FMT "[%u] :%u\n", "jfalse", INSTR_A(instr), INSTR_BC(instr)); break;
+    case OP_JTRUE_LABEL: printf(INAME_FMT "[%u] :%u\n", "jtrue", INSTR_A(instr), INSTR_BC(instr)); break;
     case OP_JUMP: printf(INAME_FMT "%+d\n", "jump", (int32_t)INSTR_BC(instr)); break;
-    case OP_JFALSE: printf(INAME_FMT "r%u %+d\n", "jfalse", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
-    case OP_JTRUE: printf(INAME_FMT "r%u %+d\n", "jtrue", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
+    case OP_JFALSE: printf(INAME_FMT "[%u] %+d\n", "jfalse", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
+    case OP_JTRUE: printf(INAME_FMT "[%u] %+d\n", "jtrue", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
     case OP_RET: printf("ret\n"); break;
-    case OP_MOVE: printf(INAME_FMT "r%u <- r%u\n", "move", INSTR_A(instr), INSTR_B(instr)); break;
-    case OP_NOT_BOOL: printf(INAME_FMT "r%u <- r%u\n", "not/bool", INSTR_A(instr), INSTR_B(instr)); break;
+    case OP_MOVE1: printf(INAME_FMT "[%u] <- [%u]\n", "move1", INSTR_A(instr), INSTR_B(instr)); break;
+    case OP_MOVE2: printf(INAME_FMT "[%u] <- [%u]\n", "move2", INSTR_A(instr), INSTR_B(instr)); break;
+    case OP_MOVE4: printf(INAME_FMT "[%u] <- [%u]\n", "move4", INSTR_A(instr), INSTR_B(instr)); break;
+    case OP_MOVE8: printf(INAME_FMT "[%u] <- [%u]\n", "move8", INSTR_A(instr), INSTR_B(instr)); break;
+    case OP_NOT_BOOL: printf(INAME_FMT "[%u] <- [%u]\n", "not/bool", INSTR_A(instr), INSTR_B(instr)); break;
     FOR_ALL_PRIM(DEFINE_PRINT_PRINT)
     FOR_ALL_PRIM_32(PRINT_PRINT_LIT_32)
     FOR_ALL_PRIM_64(PRINT_PRINT_LIT_64)

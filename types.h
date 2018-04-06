@@ -68,8 +68,8 @@ typedef Any(*FunPtr1)(Any a);
 typedef Any(*FunPtr2)(Any a, Any b);
 typedef Any(*FunPtr3)(Any a, Any b, Any c);
 
-typedef union Word Word;
-union Word {
+typedef union Word1 Word1;
+union Word1 {
     bool b32;
 
     uint8_t u8;
@@ -101,7 +101,7 @@ union Word {
 
 struct Any {
     uintptr_t type;
-    Word val;
+    Word1 val;
 };
 
 

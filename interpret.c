@@ -39,7 +39,10 @@
         &&label_OP_TCALL, \
         &&label_OP_CALL, \
         &&label_OP_RET, \
-        &&label_OP_MOVE, \
+        &&label_OP_MOVE1, \
+        &&label_OP_MOVE2, \
+        &&label_OP_MOVE4, \
+        &&label_OP_MOVE8, \
         &&label_ ## OP_NOT_BOOL, \
         FOR_ALL_PRIM(DEF_PRINT_LABEL) \
         FOR_ALL_PRIM(DEF_LIT_LABEL) \
@@ -83,63 +86,66 @@
 #endif
 
 #define DEFINE_PRINT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_PRINT_ ## UNAME)  printf("printed: " FMT "\n", fp[INSTR_A(instr)].LNAME); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_PRINT_ ## UNAME)  printf("printed: " FMT "\n", *(TYPE *)(fp + INSTR_A(instr))); DISPATCH_NEXT();
 #define DEFINE_LIT_32_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LIT_ ## UNAME)   fp[INSTR_A(instr)].LNAME = (TYPE)INSTR_BC(instr); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LIT_ ## UNAME)   *(TYPE *)(fp +INSTR_A(instr)) = (TYPE)INSTR_BC(instr); DISPATCH_NEXT();
 #define DEFINE_LIT_64_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LIT_ ## UNAME)   fp[INSTR_A(instr)].LNAME = (TYPE)*ip++; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LIT_ ## UNAME)   *(TYPE *)(fp + INSTR_A(instr)) = (TYPE)*ip++; DISPATCH_NEXT();
 #define DEFINE_INC_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_INC_ ## UNAME)   ++fp[INSTR_A(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_INC_ ## UNAME)   ++*(TYPE *)(fp + INSTR_A(instr)); DISPATCH_NEXT();
 #define DEFINE_DEC_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_DEC_ ## UNAME)   --fp[INSTR_A(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_DEC_ ## UNAME)   --*(TYPE *)(fp + INSTR_A(instr)); DISPATCH_NEXT();
 #define DEFINE_ADD_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_ADD_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME +  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_ADD_ ## UNAME)   *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) +  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_SUB_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_SUB_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME -  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_SUB_ ## UNAME)   *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) -  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_MUL_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_MUL_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME *  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MUL_ ## UNAME)   *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) *  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_DIV_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_DIV_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME /  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_DIV_ ## UNAME)   *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) /  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_MOD_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_MOD_ ## UNAME)   fp[INSTR_A(instr)].LNAME = fp[INSTR_B(instr)].LNAME %  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOD_ ## UNAME)   *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) %  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_EQ_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_EQ_ ## UNAME)    fp[INSTR_A(instr)].b32   = fp[INSTR_B(instr)].LNAME == fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_EQ_ ## UNAME)    *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) == *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_LT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LT_ ## UNAME)    fp[INSTR_A(instr)].b32   = fp[INSTR_B(instr)].LNAME <  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LT_ ## UNAME)    *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) <  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_GT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_GT_ ## UNAME)    fp[INSTR_A(instr)].b32   = fp[INSTR_B(instr)].LNAME >  fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_GT_ ## UNAME)    *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) >  *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_LTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_LTEQ_ ## UNAME)  fp[INSTR_A(instr)].b32   = fp[INSTR_B(instr)].LNAME <= fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_LTEQ_ ## UNAME)  *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) <= *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_GTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_GTEQ_ ## UNAME)  fp[INSTR_A(instr)].b32   = fp[INSTR_B(instr)].LNAME >= fp[INSTR_C(instr)].LNAME; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_GTEQ_ ## UNAME)  *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) >= *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 
 
-void interpret(uint64_t *ip, Word *fp) {
+void interpret(uint64_t *ip, uint8_t *fp) {
     BEGIN_DISPATCH()
 
     DISPATCH_CASE(OP_JUMP) ip += (int32_t)INSTR_BC(instr) - 1; DISPATCH_NEXT();
-    DISPATCH_CASE(OP_JFALSE) if (!fp[INSTR_A(instr)].b32) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
-    DISPATCH_CASE(OP_JTRUE)  if ( fp[INSTR_A(instr)].b32) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
+    DISPATCH_CASE(OP_JFALSE) if (!*(bool *)(fp + INSTR_A(instr))) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
+    DISPATCH_CASE(OP_JTRUE)  if ( *(bool *)(fp + INSTR_A(instr))) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
 
     DISPATCH_CASE(OP_TCALL) {
         uint32_t fun_offset = INSTR_A(instr);
-        Function *fun = (Function *)(fp + fun_offset)->ptr;
+        Function *fun = *(Function **)(fp + fun_offset);
         fp += fun_offset;
         ip = fun->code; /* tail call means we just overwrite these, and don't grow the call stack */
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_CALL) {
         uint32_t fun_offset = INSTR_A(instr);
-        uint32_t result_reg = INSTR_B(instr);
-        Function *fun = (Function *)(fp + fun_offset)->ptr;
+        //uint32_t result_reg = INSTR_B(instr);
+        Function *fun = *(Function **)(fp + fun_offset);
         interpret(fun->code, fp + fun_offset); /* just use the C call stack */
-        fp[result_reg] = fp[fun_offset];
+        //fp[result_reg] = fp[fun_offset];
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_RET) return; /* since we use the C call stack we just return */
 
-    DISPATCH_CASE(OP_MOVE) fp[INSTR_A(instr)] = fp[INSTR_B(instr)]; DISPATCH_NEXT();
-    DISPATCH_CASE(OP_NOT_BOOL) fp[INSTR_A(instr)].b32 = !fp[INSTR_B(instr)].b32; DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOVE1) *(uint8_t *)(fp + INSTR_A(instr)) = *(uint8_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOVE2) *(uint16_t *)(fp + INSTR_A(instr)) = *(uint16_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOVE4) *(uint32_t *)(fp + INSTR_A(instr)) = *(uint32_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_MOVE8) *(uint64_t *)(fp + INSTR_A(instr)) = *(uint64_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    DISPATCH_CASE(OP_NOT_BOOL) *(bool *)(fp + INSTR_A(instr)) = !*(bool *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
 
     FOR_ALL_PRIM(DEFINE_PRINT_INSTR)
     FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)

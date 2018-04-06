@@ -140,7 +140,7 @@ int main(int argc, char *argv[]) {
     CodeBlock block = compile_block(sexpr);
 
 #if 1
-    Word stack[1024];
+    uint8_t stack[4096];
     before = clock();
     interpret(block.code, stack);
     printf("interpreted time: %u ms\n", (uint32_t)((clock() - before) * 1000 / CLOCKS_PER_SEC));

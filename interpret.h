@@ -3,6 +3,6 @@
 
 #include "types.h"
 
-void interpret(uint64_t *ip, Word *fp);
+void interpret(uint64_t *ip, uint8_t *fp);
 
 #endif
