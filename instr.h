@@ -18,6 +18,19 @@
 #define DEF_LTEQ_ENUM(UNAME, LNAME, TYPE, FMT) OP_LTEQ_ ## UNAME,
 #define DEF_GTEQ_ENUM(UNAME, LNAME, TYPE, FMT) OP_GTEQ_ ## UNAME,
 
+struct size_12_dummy_struct { uint32_t a, b, c; };
+struct size_16_dummy_struct { uint64_t a, b; };
+
+#define FOR_ALL_PRIM_MOVE(X) \
+    X(MOVE1, move1, uint8_t) \
+    X(MOVE2, move2, uint16_t) \
+    X(MOVE4, move4, uint32_t) \
+    X(MOVE8, move8, uint64_t) \
+    X(MOVE12, move12, struct size_12_dummy_struct) \
+    X(MOVE16, move16, struct size_16_dummy_struct)
+
+#define DEF_MOVE_ENUM(UNAME, LNAME, TYPE) OP_ ## UNAME,
+
 enum {
     OP_NOP,
     
@@ -38,10 +51,7 @@ enum {
     OP_RET,     /* return from function */
 
     /* move B to A */
-    OP_MOVE1,
-    OP_MOVE2,
-    OP_MOVE4,
-    OP_MOVE8,
+    FOR_ALL_PRIM_MOVE(DEF_MOVE_ENUM)
 
     OP_NOT_BOOL,
 

@@ -7,6 +7,7 @@
 
 /* Direct treaded interpreter using computed goto (GNU extension) */
 
+#define DEF_MOVE_LABEL(UNAME, LNAME, TYPE) &&label_ ## OP_ ## UNAME,
 #define DEF_PRINT_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_PRINT_ ## UNAME,
 #define DEF_LIT_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_LIT_ ## UNAME,
 #define DEF_INC_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_INC_ ## UNAME,
@@ -39,10 +40,7 @@
         &&label_OP_TCALL, \
         &&label_OP_CALL, \
         &&label_OP_RET, \
-        &&label_OP_MOVE1, \
-        &&label_OP_MOVE2, \
-        &&label_OP_MOVE4, \
-        &&label_OP_MOVE8, \
+        FOR_ALL_PRIM_MOVE(DEF_MOVE_LABEL) \
         &&label_ ## OP_NOT_BOOL, \
         FOR_ALL_PRIM(DEF_PRINT_LABEL) \
         FOR_ALL_PRIM(DEF_LIT_LABEL) \
@@ -85,6 +83,8 @@
 
 #endif
 
+#define DEFINE_MOVE_INSTR(UNAME, LNAME, TYPE) \
+    DISPATCH_CASE(OP_ ## UNAME) *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
 #define DEFINE_PRINT_INSTR(UNAME, LNAME, TYPE, FMT) \
     DISPATCH_CASE(OP_PRINT_ ## UNAME)  printf("printed: " FMT "\n", *(TYPE *)(fp + INSTR_A(instr))); DISPATCH_NEXT();
 #define DEFINE_LIT_32_INSTR(UNAME, LNAME, TYPE, FMT) \
@@ -116,7 +116,6 @@
 #define DEFINE_GTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
     DISPATCH_CASE(OP_GTEQ_ ## UNAME)  *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) >= *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 
-
 void interpret(uint64_t *ip, uint8_t *fp) {
     BEGIN_DISPATCH()
 
@@ -141,12 +140,8 @@ void interpret(uint64_t *ip, uint8_t *fp) {
     }
     DISPATCH_CASE(OP_RET) return; /* since we use the C call stack we just return */
 
-    DISPATCH_CASE(OP_MOVE1) *(uint8_t *)(fp + INSTR_A(instr)) = *(uint8_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
-    DISPATCH_CASE(OP_MOVE2) *(uint16_t *)(fp + INSTR_A(instr)) = *(uint16_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
-    DISPATCH_CASE(OP_MOVE4) *(uint32_t *)(fp + INSTR_A(instr)) = *(uint32_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
-    DISPATCH_CASE(OP_MOVE8) *(uint64_t *)(fp + INSTR_A(instr)) = *(uint64_t *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
+    FOR_ALL_PRIM_MOVE(DEFINE_MOVE_INSTR)
     DISPATCH_CASE(OP_NOT_BOOL) *(bool *)(fp + INSTR_A(instr)) = !*(bool *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
-
     FOR_ALL_PRIM(DEFINE_PRINT_INSTR)
     FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)
     FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR)

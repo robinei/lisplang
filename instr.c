@@ -20,7 +20,7 @@
 #define DEFINE_PRINT_GT(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GT, gt, UNAME, LNAME)
 #define DEFINE_PRINT_LTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(LTEQ, lteq, UNAME, LNAME)
 #define DEFINE_PRINT_GTEQ(UNAME, LNAME, TYPE, FMT) PRINT_OP3(GTEQ, gteq, UNAME, LNAME)
-
+#define DEFINE_PRINT_MOVE(UNAME, LNAME, TYPE) case OP_ ## UNAME: printf(INAME_FMT "[%u] <- [%u]\n", #LNAME, INSTR_A(instr), INSTR_B(instr)); break;
 
 uint64_t *print_instr(uint64_t *code) {
     uint32_t temp32;
@@ -37,10 +37,7 @@ uint64_t *print_instr(uint64_t *code) {
     case OP_JFALSE: printf(INAME_FMT "[%u] %+d\n", "jfalse", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
     case OP_JTRUE: printf(INAME_FMT "[%u] %+d\n", "jtrue", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
     case OP_RET: printf("ret\n"); break;
-    case OP_MOVE1: printf(INAME_FMT "[%u] <- [%u]\n", "move1", INSTR_A(instr), INSTR_B(instr)); break;
-    case OP_MOVE2: printf(INAME_FMT "[%u] <- [%u]\n", "move2", INSTR_A(instr), INSTR_B(instr)); break;
-    case OP_MOVE4: printf(INAME_FMT "[%u] <- [%u]\n", "move4", INSTR_A(instr), INSTR_B(instr)); break;
-    case OP_MOVE8: printf(INAME_FMT "[%u] <- [%u]\n", "move8", INSTR_A(instr), INSTR_B(instr)); break;
+    FOR_ALL_PRIM_MOVE(DEFINE_PRINT_MOVE)
     case OP_NOT_BOOL: printf(INAME_FMT "[%u] <- [%u]\n", "not/bool", INSTR_A(instr), INSTR_B(instr)); break;
     FOR_ALL_PRIM(DEFINE_PRINT_PRINT)
     FOR_ALL_PRIM_32(PRINT_PRINT_LIT_32)

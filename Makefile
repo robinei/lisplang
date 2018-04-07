@@ -1,6 +1,6 @@
 rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
 
-CC=gcc
+CC=clang
 CFLAGS=-c -Wall -Wno-unused-function -Wno-unused-value -Wno-strict-aliasing -O3
 LDFLAGS=
 SOURCES=$(call rwildcard, , *.c)
