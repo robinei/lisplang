@@ -8,7 +8,6 @@
 /* Direct treaded interpreter using computed goto (GNU extension) */
 
 #define DEF_MOVE_LABEL(UNAME, LNAME, TYPE) &&label_ ## OP_ ## UNAME,
-#define DEF_PRINT_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_PRINT_ ## UNAME,
 #define DEF_LIT_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_LIT_ ## UNAME,
 #define DEF_INC_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_INC_ ## UNAME,
 #define DEF_DEC_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_DEC_ ## UNAME,
@@ -22,6 +21,7 @@
 #define DEF_GT_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_GT_ ## UNAME,
 #define DEF_LTEQ_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_LTEQ_ ## UNAME,
 #define DEF_GTEQ_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_GTEQ_ ## UNAME,
+#define DEF_TO_ANY_LABEL(UNAME, LNAME, TYPE, FMT) &&label_ ## OP_ ## UNAME ## _TO_ANY,
 
 #define DISPATCH_CASE(OPNAME) label_ ## OPNAME:
 
@@ -42,7 +42,6 @@
         &&label_OP_RET, \
         FOR_ALL_PRIM_MOVE(DEF_MOVE_LABEL) \
         &&label_ ## OP_NOT_BOOL, \
-        FOR_ALL_PRIM(DEF_PRINT_LABEL) \
         FOR_ALL_PRIM(DEF_LIT_LABEL) \
         FOR_ALL_INT(DEF_INC_LABEL) \
         FOR_ALL_INT(DEF_DEC_LABEL) \
@@ -56,6 +55,11 @@
         FOR_ALL_NUM(DEF_GT_LABEL) \
         FOR_ALL_NUM(DEF_LTEQ_LABEL) \
         FOR_ALL_NUM(DEF_GTEQ_LABEL) \
+        FOR_ALL_BASIC(DEF_TO_ANY_LABEL) \
+        &&label_OP_CALL_BUILTIN_1_VOID, \
+        &&label_OP_CALL_BUILTIN_2_VOID, \
+        &&label_OP_CALL_BUILTIN_1, \
+        &&label_OP_CALL_BUILTIN_2, \
     }; \
     uint64_t instr; \
     DISPATCH_NEXT()
@@ -85,8 +89,6 @@
 
 #define DEFINE_MOVE_INSTR(UNAME, LNAME, TYPE) \
     DISPATCH_CASE(OP_ ## UNAME) *(TYPE *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
-#define DEFINE_PRINT_INSTR(UNAME, LNAME, TYPE, FMT) \
-    DISPATCH_CASE(OP_PRINT_ ## UNAME)  printf("printed: " FMT "\n", *(TYPE *)(fp + INSTR_A(instr))); DISPATCH_NEXT();
 #define DEFINE_LIT_32_INSTR(UNAME, LNAME, TYPE, FMT) \
     DISPATCH_CASE(OP_LIT_ ## UNAME)   *(TYPE *)(fp +INSTR_A(instr)) = (TYPE)INSTR_BC(instr); DISPATCH_NEXT();
 #define DEFINE_LIT_64_INSTR(UNAME, LNAME, TYPE, FMT) \
@@ -115,6 +117,8 @@
     DISPATCH_CASE(OP_LTEQ_ ## UNAME)  *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) <= *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
 #define DEFINE_GTEQ_INSTR(UNAME, LNAME, TYPE, FMT) \
     DISPATCH_CASE(OP_GTEQ_ ## UNAME)  *(bool *)(fp + INSTR_A(instr)) = *(TYPE *)(fp + INSTR_B(instr)) >= *(TYPE *)(fp + INSTR_C(instr)); DISPATCH_NEXT();
+#define DEFINE_TO_ANY_INSTR(UNAME, LNAME, TYPE, FMT) \
+    DISPATCH_CASE(OP_ ## UNAME ## _TO_ANY) { Any *any = (Any *)(fp + INSTR_A(instr)); any->val.LNAME = *(TYPE *)(fp + INSTR_B(instr)); any->type = MK_ANY_TYPE(type_ ## LNAME); } DISPATCH_NEXT();
 
 void interpret(uint64_t *ip, uint8_t *fp) {
     BEGIN_DISPATCH()
@@ -142,7 +146,6 @@ void interpret(uint64_t *ip, uint8_t *fp) {
 
     FOR_ALL_PRIM_MOVE(DEFINE_MOVE_INSTR)
     DISPATCH_CASE(OP_NOT_BOOL) *(bool *)(fp + INSTR_A(instr)) = !*(bool *)(fp + INSTR_B(instr)); DISPATCH_NEXT();
-    FOR_ALL_PRIM(DEFINE_PRINT_INSTR)
     FOR_ALL_PRIM_32(DEFINE_LIT_32_INSTR)
     FOR_ALL_PRIM_64(DEFINE_LIT_64_INSTR)
     FOR_ALL_INT(DEFINE_INC_INSTR)
@@ -157,6 +160,24 @@ void interpret(uint64_t *ip, uint8_t *fp) {
     FOR_ALL_NUM(DEFINE_GT_INSTR)
     FOR_ALL_NUM(DEFINE_LTEQ_INSTR)
     FOR_ALL_NUM(DEFINE_GTEQ_INSTR)
+    FOR_ALL_BASIC(DEFINE_TO_ANY_INSTR)
+
+    DISPATCH_CASE(OP_CALL_BUILTIN_1_VOID) {
+        (*(FunPtr1 *)ip++)(*(Any *)(fp + INSTR_A(instr)));
+        DISPATCH_NEXT();
+    }
+    DISPATCH_CASE(OP_CALL_BUILTIN_2_VOID) {
+        (*(FunPtr2 *)ip++)(*(Any *)(fp + INSTR_A(instr)), *(Any *)(fp + INSTR_B(instr)));
+        DISPATCH_NEXT();
+    }
+    DISPATCH_CASE(OP_CALL_BUILTIN_1) {
+        *(Any *)(fp + INSTR_A(instr)) = (*(FunPtr1 *)ip++)(*(Any *)(fp + INSTR_B(instr)));
+        DISPATCH_NEXT();
+    }
+    DISPATCH_CASE(OP_CALL_BUILTIN_2) {
+        *(Any *)(fp + INSTR_A(instr)) = (*(FunPtr2 *)ip++)(*(Any *)(fp + INSTR_B(instr)), *(Any *)(fp + INSTR_C(instr)));
+        DISPATCH_NEXT();
+    }
 
     END_DISPATCH();
 }

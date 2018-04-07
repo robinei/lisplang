@@ -49,6 +49,10 @@
     PROPS_F32(X) \
     PROPS_F64(X)
 
+#define FOR_ALL_BASIC(X) \
+    PROPS_BOOL(X) \
+    FOR_ALL_NUM(X)
+
 #define FOR_ALL_PRIM(X) \
     PROPS_BOOL(X) \
     FOR_ALL_NUM(X) \
@@ -126,7 +130,7 @@ struct Any {
 #define ANY_KIND_MASK ((1 << ANY_KIND_BITS) - 1)
 #define ANY_KIND(any) ((any).type & ANY_KIND_MASK)
 #define ANY_TYPE(any) (ANY_KIND(any) != KIND_REF_SLICE ? (const Type *)((any).type & ~ANY_KIND_MASK) : NULL)
-#define MK_ANY_TYPE(t) (t->kind | (uintptr_t)t)
+#define MK_ANY_TYPE(t) ((t)->kind | (uintptr_t)(t))
 
 enum {
     KIND_ANY,

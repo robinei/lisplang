@@ -1,5 +1,6 @@
 #include "any.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
@@ -217,4 +218,14 @@ Any array_set(Any arr, Any idx, Any val) {
     }
 
     return ANY_UNIT;
+}
+
+#define DEF_PRINTER(UNAME, LNAME, TYPE, FMT) \
+    case KIND_ ## UNAME: printf("printed: " FMT "\n", any.val.LNAME); break;
+
+void print_any(Any any) {
+    switch (ANY_KIND(any)) {
+    FOR_ALL_PRIM(DEF_PRINTER)
+    default: assert(0 && "unsupported type");
+    }
 }

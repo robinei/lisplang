@@ -38,4 +38,6 @@ Any array_length(Any arr);
 Any array_get(Any arr, Any idx);
 Any array_set(Any arr, Any idx, Any val);
 
+void print_any(Any any);
+
 #endif

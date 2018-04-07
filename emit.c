@@ -1,4 +1,5 @@
 #include "emit.h"
+#include "any.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,6 +66,10 @@ static uint32_t instr_word_count(uint64_t instr) {
     case OP_LIT_I64:
     case OP_LIT_F64:
     case OP_LIT_PTR:
+    case OP_CALL_BUILTIN_1_VOID:
+    case OP_CALL_BUILTIN_2_VOID:
+    case OP_CALL_BUILTIN_1:
+    case OP_CALL_BUILTIN_2:
         return 2;
     default:
         return 1;
@@ -166,13 +171,17 @@ uint32_t emit_code_consuming_result(CompilerCtx *cctx, AstNode *node) {
     return offset;
 }
 
+static uint32_t alloc_stack_size(CompilerCtx *cctx, uint32_t size) {
+    uint32_t offset = cctx->stack_offset;
+    cctx->stack_offset += size;
+    return offset;
+}
+
 static uint32_t alloc_stack(CompilerCtx *cctx, AstNode *node) {
     if (node->dst_binding) {
         return node->dst_binding->frame_offset;
     }
-    uint32_t offset = cctx->stack_offset;
-    cctx->stack_offset += node->type->size;
-    return offset;
+    return alloc_stack_size(cctx, node->type->size);
 }
 
 STATIC_ASSERT(sizeof(struct size_12_dummy_struct) == 12, "bad stuct size");
@@ -198,6 +207,16 @@ static uint32_t emit_bin_op(CompilerCtx *cctx, uint32_t base_op, AstPrimNode *pr
     uint32_t op = base_op + (prim->arg_nodes[0]->type->kind - KIND_U8);
     emit_op3(cctx, op, dst_offset, offset0, offset1);
     return dst_offset;
+}
+
+#define DEF_EMIT_TO_ANY(UNAME, LNAME, TYPE, FMT) \
+    case KIND_ ## UNAME: emit_op2(cctx, OP_ ## UNAME ## _TO_ANY, dst_offset, value_offset); break;
+
+static void emit_to_any(CompilerCtx *cctx, uint32_t dst_offset, uint32_t value_offset, const Type *type) {
+    switch (type->kind) {
+    FOR_ALL_BASIC(DEF_EMIT_TO_ANY)
+    default: assert(0 && "can't convert type to any");
+    }
 }
 
 #define EMIT_PRIM(UNAME, LNAME, TYPE, FMT) \
@@ -316,8 +335,15 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
     case AST_PRIM_PRINT: {
         AstPrimNode *prim = (AstPrimNode *)node;
         uint32_t offset = emit_code_consuming_result(cctx, prim->arg_nodes[0]);
-        uint32_t op = OP_PRINT_BOOL + (prim->arg_nodes[0]->type->kind - KIND_BOOL);
-        emit_op1(cctx, op, offset);
+        uint32_t dst_offset = offset;
+        uint32_t base_offset = cctx->stack_offset;
+        if (dst_offset < base_offset) {
+            dst_offset = alloc_stack_size(cctx, sizeof(Any));
+            cctx->stack_offset = base_offset;
+        }
+        emit_to_any(cctx, dst_offset, offset, prim->arg_nodes[0]->type);
+        emit_op1(cctx, OP_CALL_BUILTIN_1_VOID, dst_offset);
+        emit(cctx, (uint64_t)print_any);
         return 0;
     }
     default: assert(0);
