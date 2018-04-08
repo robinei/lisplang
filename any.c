@@ -10,6 +10,19 @@
 
 #define IS_ANY_SYM(any, sym) (ANY_TYPE(any) == type_ptr_symbol && (any).val.symbol_ptr == sym)
 
+bool consp(Any any) {
+    return ANY_TYPE(any) == type_ref_cons;
+}
+
+bool symbolp(Any any) {
+    return ANY_TYPE(any) == type_ptr_symbol;
+}
+
+const Symbol *to_symbol(Any any) {
+    assert(symbolp(any));
+    return any.val.symbol_ptr;
+}
+
 uint32_t to_u32(Any num) {
     switch (ANY_KIND(num)) {
     case KIND_U8: return num.val.u8;

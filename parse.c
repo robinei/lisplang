@@ -238,7 +238,17 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 node->binding_count = binding_count;
 
                 for (uint32_t i = 0; i < binding_count; ++i) {
+                    const Type *type = NULL;
+
                     Any name_form = car(bindings_form);
+                    if (consp(name_form)) {
+                        assert(to_symbol(car(name_form)) == symbol_the);
+                        name_form = cdr(name_form);
+                        type = parse_type(car(name_form));
+                        name_form = cdr(name_form);
+                        name_form = car(name_form);
+                    }
+                    assert(symbolp(name_form));
                     bindings_form = cdr(bindings_form);
                     Any init_form = car(bindings_form);
                     bindings_form = cdr(bindings_form);
@@ -247,6 +257,7 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                     Binding *binding = node->bindings + i;
                     binding->symbol = name_form.val.symbol_ptr;
                     binding->init_node = parse_form(cctx, init_form, binding);
+                    assert(!type || type == binding->init_node->type);
                     binding->type = binding->init_node->type;
                     push_binding(cctx, binding);
                 }

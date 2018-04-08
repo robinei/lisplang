@@ -81,8 +81,19 @@ void init_symbols(void) {
     symbol_print    = intern_symbol_cstr("print");
     symbol_tagbody  = intern_symbol_cstr("tagbody");
     symbol_go       = intern_symbol_cstr("go");
+    symbol_the      = intern_symbol_cstr("the");
+    symbol_bool     = intern_symbol_cstr("bool");
+    symbol_u8       = intern_symbol_cstr("u8");
+    symbol_u16      = intern_symbol_cstr("u16");
+    symbol_u32      = intern_symbol_cstr("u32");
+    symbol_u64      = intern_symbol_cstr("u64");
+    symbol_i8       = intern_symbol_cstr("i8");
+    symbol_i16      = intern_symbol_cstr("i16");
+    symbol_i32      = intern_symbol_cstr("i32");
+    symbol_i64      = intern_symbol_cstr("i64");
+    symbol_f32      = intern_symbol_cstr("f32");
+    symbol_f64      = intern_symbol_cstr("f64");
     
-    assert(intern_symbol_cstr("foo"));
-    assert(intern_symbol_cstr("foo") == intern_symbol_cstr("foo"));
+    assert(symbol_if);
+    assert(intern_symbol_cstr("if") == symbol_if);
 }
-

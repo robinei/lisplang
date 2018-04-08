@@ -333,12 +333,14 @@ static Any read_form(ReadState *state) {
         } else {
             break;
         }
-    }
-    if (ch == ':') {
+    }*/
+    skip_space(state);
+    if (peek(state, 0) == ':' && peek(state, 1) == ':') {
+        step(state);
         step(state);
         Any typeform = read_form(state);
-        result = cons(make_symbol(":"), cons(result, cons(typeform, ANY_UNIT)));
-    }*/
+        result = cons(make_symbol("the"), cons(typeform, cons(result, ANY_UNIT)));
+    }
     return result;
 }
 

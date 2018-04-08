@@ -1,4 +1,4 @@
-#include "types.h"
+#include "any.h"
 #include "fnv.h"
 
 #include <string.h>
@@ -158,6 +158,24 @@ const Type *struct_type(uint32_t size, uint32_t field_count, StructField *fields
         type.flags |= TYPE_FLAG_UNSIZED;
     }
     return intern_type(&type);
+}
+
+const Type *parse_type(Any form) {
+    if (symbolp(form)) {
+        const Symbol *sym = to_symbol(form);
+        if (sym == symbol_bool) { return type_b32; }
+        if (sym == symbol_u8) { return type_u8; }
+        if (sym == symbol_u16) { return type_u16; }
+        if (sym == symbol_u32) { return type_u32; }
+        if (sym == symbol_u64) { return type_u64; }
+        if (sym == symbol_i8) { return type_i8; }
+        if (sym == symbol_i16) { return type_i16; }
+        if (sym == symbol_i32) { return type_i32; }
+        if (sym == symbol_i64) { return type_i64; }
+        if (sym == symbol_f32) { return type_f32; }
+        if (sym == symbol_f64) { return type_f64; }
+    }
+    assert(0 && "can't parse type");
 }
 
 void init_types(void) {

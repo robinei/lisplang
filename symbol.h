@@ -42,6 +42,18 @@ const Symbol *symbol_gteq;
 const Symbol *symbol_print;
 const Symbol *symbol_tagbody;
 const Symbol *symbol_go;
+const Symbol *symbol_the;
+const Symbol *symbol_bool;
+const Symbol *symbol_u8;
+const Symbol *symbol_u16;
+const Symbol *symbol_u32;
+const Symbol *symbol_u64;
+const Symbol *symbol_i8;
+const Symbol *symbol_i16;
+const Symbol *symbol_i32;
+const Symbol *symbol_i64;
+const Symbol *symbol_f32;
+const Symbol *symbol_f64;
 
 void init_symbols(void);
 const Symbol *intern_symbol(const char *str, uint32_t length);

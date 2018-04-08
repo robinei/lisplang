@@ -251,6 +251,7 @@ const Type *type_ptr_symbol;
 const Type *type_ref_string;
 const Type *type_ref_cons;
 
+const Type *parse_type(Any form);
 void init_types(void);
 
 #endif

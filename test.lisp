@@ -2,7 +2,7 @@
   (let (x 1)
     (print (+ x (inc x))))
   
-  (let (n 100000000
+  (let (n :: i32 100000000
         a 0
         b 1
         temp 0
