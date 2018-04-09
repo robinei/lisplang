@@ -10,14 +10,15 @@
 
 #define IS_ANY_SYM(any, sym) (ANY_TYPE(any) == type_ptr_symbol && (any).val.symbol_ptr == sym)
 
+bool nullp(Any any) {
+    return ANY_KIND(any) == KIND_UNIT;
+}
 bool consp(Any any) {
     return ANY_TYPE(any) == type_ref_cons;
 }
-
 bool symbolp(Any any) {
     return ANY_TYPE(any) == type_ptr_symbol;
 }
-
 const Symbol *to_symbol(Any any) {
     assert(symbolp(any));
     return any.val.symbol_ptr;
@@ -111,7 +112,7 @@ Any make_symbol(const char *str) {
 }
 
 Any cons(Any car, Any cdr) {
-    assert(ANY_TYPE(cdr) == type_ref_cons || ANY_KIND(cdr) == KIND_UNIT);
+    assert(consp(cdr) || nullp(cdr));
     Cons *c = rc_alloc(sizeof(Cons));
     c->car = car;
     c->cdr = cdr;
@@ -129,7 +130,7 @@ Any make_list(Any first, ...) {
     va_start(args, first);
     for (;;) {
         Any x = va_arg(args, Any);
-        if (ANY_KIND(x) == KIND_UNIT) {
+        if (nullp(x)) {
             break;
         }
         arr[++i] = x;
@@ -156,7 +157,7 @@ Any cdr(Any cons) {
 
 uint32_t list_length(Any lst) {
     uint32_t len = 0;
-    while (ANY_KIND(lst) != KIND_UNIT) {
+    while (!nullp(lst)) {
         ++len;
         lst = cdr(lst);
     }

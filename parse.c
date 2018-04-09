@@ -22,6 +22,58 @@
 #include "hashtable.h"
 
 
+static const Type *parse_type(Any form) {
+    if (symbolp(form)) {
+        const Symbol *sym = to_symbol(form);
+        if (sym == symbol_bool) { return type_b32; }
+        if (sym == symbol_u8) { return type_u8; }
+        if (sym == symbol_u16) { return type_u16; }
+        if (sym == symbol_u32) { return type_u32; }
+        if (sym == symbol_u64) { return type_u64; }
+        if (sym == symbol_i8) { return type_i8; }
+        if (sym == symbol_i16) { return type_i16; }
+        if (sym == symbol_i32) { return type_i32; }
+        if (sym == symbol_i64) { return type_i64; }
+        if (sym == symbol_f32) { return type_f32; }
+        if (sym == symbol_f64) { return type_f64; }
+    }
+    if (consp(form)) {
+        Any head = car(form);
+        if (symbolp(head)) {
+            const Symbol *sym = to_symbol(head);
+            if (sym == symbol_array) {
+                form = cdr(form);
+                const Type *elem_type = parse_type(car(form));
+                form = cdr(form);
+                if (nullp(form)) {
+                    return intern_array_type(elem_type);
+                }
+                form = cdr(form);
+                uint32_t length = to_u32(car(form));
+                assert(nullp(cdr(form)));
+                return intern_array_type_sized(elem_type, length);
+            }
+            if (sym == symbol_fun) {
+                form = cdr(form);
+                Any params_form = car(form);
+                form = cdr(form);
+                const Type *ret_type = parse_type(car(form));
+                assert(nullp(cdr(form)));
+                uint32_t param_count = list_length(params_form);
+                FunParam *params = calloc(1, sizeof(FunParam) * param_count);
+                for (uint32_t i = 0; i < param_count; ++i) {
+                    params[i].type = parse_type(car(params_form));
+                    params_form = cdr(params_form);
+                }
+                const Type *result = intern_fun_type(ret_type, param_count, params);
+                free(params);
+                return result;
+            }
+        }
+    }
+    assert(0 && "can't parse type");
+}
+
 uint32_t gen_label(CompilerCtx *cctx) {
     return ++cctx->label_counter;
 }
@@ -60,40 +112,40 @@ static uint32_t lookup_label(CompilerCtx *cctx, const Symbol *sym) {
     return label;
 }
 
-static void push_binding(CompilerCtx *cctx, Binding *binding) {
-    if (cctx->binding_stack_used == cctx->binding_stack_capacity) {
-        cctx->binding_stack_capacity = cctx->binding_stack_capacity ? cctx->binding_stack_capacity * 2 : 16;
-        cctx->binding_stack = realloc(cctx->binding_stack, cctx->binding_stack_capacity * sizeof(PrevBinding));
+static void push_binding(GlobalEnv *global_env, Binding *binding) {
+    if (global_env->savestack_used == global_env->savestack_capacity) {
+        global_env->savestack_capacity = global_env->savestack_capacity ? global_env->savestack_capacity * 2 : 16;
+        global_env->savestack = realloc(global_env->savestack, global_env->savestack_capacity * sizeof(PrevBinding));
     }
     Binding *prev = NULL;
-    BindingMap_get(&cctx->binding_map, binding->symbol, &prev);
-    BindingMap_put(&cctx->binding_map, binding->symbol, binding);
-    cctx->binding_stack[cctx->binding_stack_used].symbol = binding->symbol;
-    cctx->binding_stack[cctx->binding_stack_used].binding = prev;
-    ++cctx->binding_stack_used;
+    BindingMap_get(&global_env->map, binding->symbol, &prev);
+    BindingMap_put(&global_env->map, binding->symbol, binding);
+    global_env->savestack[global_env->savestack_used].symbol = binding->symbol;
+    global_env->savestack[global_env->savestack_used].binding = prev;
+    ++global_env->savestack_used;
 }
 
-static void pop_bindings(CompilerCtx *cctx, uint32_t count) {
-    assert(cctx->binding_stack_used >= count);
+static void pop_bindings(GlobalEnv *global_env, uint32_t count) {
+    assert(global_env->savestack_used >= count);
     for (uint32_t i = 0; i < count; ++i) {
-        PrevBinding prev = cctx->binding_stack[--cctx->binding_stack_used];
+        PrevBinding prev = global_env->savestack[--global_env->savestack_used];
 
         Binding *curr = NULL;
-        BindingMap_get(&cctx->binding_map, prev.symbol, &curr);
+        BindingMap_get(&global_env->map, prev.symbol, &curr);
         assert(curr);
 
         if (prev.binding) {
-            BindingMap_put(&cctx->binding_map, prev.symbol, prev.binding);
+            BindingMap_put(&global_env->map, prev.symbol, prev.binding);
         }
         else {
-            BindingMap_remove(&cctx->binding_map, prev.symbol);
+            BindingMap_remove(&global_env->map, prev.symbol);
         }
     }
 }
 
-static Binding *lookup_binding(CompilerCtx *cctx, const Symbol *name) {
+static Binding *lookup_binding(GlobalEnv *global_env, const Symbol *name) {
     Binding *b = NULL;
-    BindingMap_get(&cctx->binding_map, name, &b);
+    BindingMap_get(&global_env->map, name, &b);
     return b;
 }
 
@@ -127,16 +179,16 @@ static AstPrimNode *parse_prim(CompilerCtx *cctx, AstNodeKind kind, Any args, Bi
 
     for (uint32_t i = 0; i < node->arg_count; ++i) {
         node->arg_nodes[i] = parse_form(cctx, car(args), i == 0 ? dst_binding : NULL);
-        Binding *dst_binding = node->arg_nodes[i]->dst_binding;
-        if (dst_binding) {
-            store_counts[i] = dst_binding->store_count;
+        Binding *dst = node->arg_nodes[i]->dst_binding;
+        if (dst) {
+            store_counts[i] = dst->store_count;
         }
         args = cdr(args);
     }
 
     for (uint32_t i = 0; i < node->arg_count; ++i) {
-        Binding *dst_binding = node->arg_nodes[i]->dst_binding;
-        if (dst_binding && store_counts[i] != dst_binding->store_count) {
+        Binding *dst = node->arg_nodes[i]->dst_binding;
+        if (dst && store_counts[i] != dst->store_count) {
             /* binding returned from this form was modified in a later form, so it must be copied */
             node->arg_nodes[i]->dst_binding = NULL;
         }
@@ -190,6 +242,7 @@ static AstPrimNode *parse_inc_dec(CompilerCtx *cctx, AstNodeKind kind, Any args)
     ++var->binding->store_count;
     node->n.type = node->arg_nodes[0]->type;
     node->n.dst_binding = var->binding;
+    assert(node->n.type == node->n.dst_binding->type);
     return node;
 }
 
@@ -202,11 +255,35 @@ static AstVarNode *create_var(CompilerCtx *cctx, Binding *binding) {
     return node;
 }
 
+typedef struct BindingName BindingName;
+struct BindingName {
+    const Symbol *symbol;
+    const Type *type;
+};
+
+BindingName parse_binding_name(CompilerCtx *cctx, Any form) {
+    BindingName b = {NULL, NULL};
+    if (symbolp(form)) {
+        b.symbol = to_symbol(form);
+        return b;
+    }
+    Any temp = car(form);
+    assert(symbolp(temp));
+    assert(temp.val.symbol_ptr == symbol_the);
+    form = cdr(form);
+    b.type = parse_type(car(form));
+    form = cdr(form);
+    temp = car(form);
+    assert(symbolp(temp));
+    b.symbol = temp.val.symbol_ptr;
+    return b;
+}
+
 AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
     const Type *type = ANY_TYPE(form);
 
     if (type == type_ptr_symbol) {
-        Binding *binding = lookup_binding(cctx, form.val.symbol_ptr);
+        Binding *binding = lookup_binding(cctx->global_env, form.val.symbol_ptr);
         assert(binding);
         return (AstNode *)create_var(cctx, binding);
     }
@@ -228,45 +305,76 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 rest = cdr(rest);
                 Any body_form = car(rest);
                 rest = cdr(rest);
-                assert(ANY_KIND(rest) == KIND_UNIT);
+                assert(nullp(rest));
 
                 uint32_t bindings_length = list_length(bindings_form);
                 uint32_t binding_count = bindings_length / 2;
                 assert((bindings_length % 2) == 0);
 
-                AstLetNode *node = create_node(cctx, AST_LET, sizeof(AstLetNode) + sizeof(Binding) * binding_count);
+                AstScopeNode *node = create_node(cctx, AST_SCOPE_LET, sizeof(AstScopeNode) + sizeof(Binding) * binding_count);
                 node->binding_count = binding_count;
 
                 for (uint32_t i = 0; i < binding_count; ++i) {
-                    const Type *type = NULL;
-
                     Any name_form = car(bindings_form);
-                    if (consp(name_form)) {
-                        assert(to_symbol(car(name_form)) == symbol_the);
-                        name_form = cdr(name_form);
-                        type = parse_type(car(name_form));
-                        name_form = cdr(name_form);
-                        name_form = car(name_form);
-                    }
-                    assert(symbolp(name_form));
                     bindings_form = cdr(bindings_form);
                     Any init_form = car(bindings_form);
                     bindings_form = cdr(bindings_form);
-                    assert(ANY_TYPE(name_form) == type_ptr_symbol);
+
+                    BindingName name = parse_binding_name(cctx, name_form);
 
                     Binding *binding = node->bindings + i;
-                    binding->symbol = name_form.val.symbol_ptr;
+                    binding->symbol = name.symbol;
                     binding->init_node = parse_form(cctx, init_form, binding);
-                    assert(!type || type == binding->init_node->type);
+                    assert(!name.type || name.type == binding->init_node->type);
                     binding->type = binding->init_node->type;
-                    push_binding(cctx, binding);
+                    push_binding(cctx->global_env, binding);
                 }
-                assert(ANY_KIND(bindings_form) == KIND_UNIT);
+                assert(nullp(bindings_form));
                 
                 node->body_node = parse_form(cctx, body_form, dst_binding);
                 node->n.type = node->body_node->type;
                 node->n.dst_binding = node->body_node->dst_binding;
-                pop_bindings(cctx, binding_count);
+                pop_bindings(cctx->global_env, binding_count);
+                return (AstNode *)node;
+            }
+
+            if (symbol == symbol_fun) {
+                Any rest = cdr(form);
+                Any params_form = car(rest);
+                rest = cdr(rest);
+                Any body_form = car(rest);
+                rest = cdr(rest);
+                assert(nullp(rest));
+
+                uint32_t params_count = list_length(params_form);
+                AstScopeNode *node = create_node(cctx, AST_SCOPE_FUN, sizeof(AstScopeNode) + sizeof(Binding) * (params_count + 1));
+                node->binding_count = params_count;
+
+                FunParam *params = calloc(1, sizeof(FunParam) * params_count);
+
+                for (uint32_t i = 0; i < params_count; ++i) {
+                    BindingName name = parse_binding_name(cctx, car(params_form));
+                    params_form = cdr(params_form);
+                    
+                    Binding *binding = node->bindings + i;
+                    binding->symbol = name.symbol;
+                    binding->init_node = NULL;
+                    binding->type = name.type ? name.type : type_any;
+                    push_binding(cctx->global_env, binding);
+
+                    params[i].type = binding->type;
+                }
+                assert(nullp(params_form));
+                
+                /* a pseudo-binding for the result, just to have a destination */
+                Binding *result_binding = node->bindings + params_count;
+
+                /* TODO: handle free vars and this being a closure */
+                node->body_node = parse_form(cctx, body_form, result_binding);
+                node->n.type = intern_fun_type(node->body_node->type, params_count, params);
+                node->n.dst_binding = dst_binding;
+                result_binding->type = node->body_node->type;
+                free(params);
                 return (AstNode *)node;
             }
 
@@ -277,10 +385,10 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 Any then_form = car(rest);
                 rest = cdr(rest);
                 Any else_form;
-                if (ANY_KIND(rest) != KIND_UNIT) {
+                if (!nullp(rest)) {
                     else_form = car(rest);
                     rest = cdr(rest);
-                    assert(ANY_KIND(rest) == KIND_UNIT);
+                    assert(nullp(rest));
                 }
                 else {
                     else_form = ANY_UNIT;
@@ -292,7 +400,9 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 node->else_node = parse_form(cctx, else_form, dst_binding);
                 assert(node->cond_node->type == type_any || node->cond_node->type == type_b32);
                 assert(node->then_node->type == node->else_node->type);
+                assert(node->then_node->dst_binding == node->else_node->dst_binding);
                 node->n.type = node->then_node->type;
+                node->n.dst_binding = node->then_node->dst_binding;
                 return (AstNode *)node;
             }
 
@@ -356,6 +466,8 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 assert(var->n.type == node->arg_nodes[1]->type);
 
                 node->n.type = node->arg_nodes[1]->type;
+                node->n.dst_binding = var->binding;
+                assert(node->n.type == node->n.dst_binding->type);
                 ++var->binding->store_count;
                 return (AstNode *)node;
             }
@@ -393,7 +505,23 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
         }
 
         /* call */
-        assert(0 && "call not implemented");
+        {
+            Any args = cdr(form);
+            uint32_t arg_count = list_length(args);
+            struct AstCallNode *node = create_node(cctx, AST_CALL, sizeof(AstCallNode) + sizeof(AstNode *) * arg_count);
+            node->fun_node = parse_form(cctx, head, NULL);
+            node->arg_count = arg_count;
+            for (uint32_t i = 0; i < arg_count; ++i) {
+                node->arg_nodes[i] = parse_form(cctx, car(args), NULL);
+                args = cdr(args);
+            }
+            /* TODO: handle ANY fun type */
+            /* TODO: handle closures */
+            assert(node->fun_node->type->kind == KIND_FUN);
+            assert(node->fun_node->type->target);
+            node->n.type = node->fun_node->type->target;
+            return (AstNode *)node;
+        }
     }
 
 #define PRIM_CASE(UNAME, LNAME, TYPE, FMT) case KIND_ ## UNAME:

@@ -8,9 +8,10 @@ typedef enum AstNodeKind AstNodeKind;
 enum AstNodeKind {
     AST_LITERAL,
     AST_VAR_LOCAL,
-    AST_LET,
-    AST_IF,
+    AST_SCOPE_LET,
+    AST_SCOPE_FUN,
     AST_CALL,
+    AST_IF,
     AST_LABEL,
     AST_PRIM_TAGBODY,
     AST_PRIM_GO,
@@ -50,8 +51,8 @@ struct AstVarNode {
     Binding *binding;
 };
 
-typedef struct AstLetNode AstLetNode;
-struct AstLetNode {
+typedef struct AstScopeNode AstScopeNode;
+struct AstScopeNode {
     AstNode n;
     AstNode *body_node;
     uint32_t binding_count;

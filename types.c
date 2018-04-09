@@ -3,6 +3,8 @@
 
 #include <string.h>
 
+STATIC_ASSERT(NUM_TYPE_KINDS < (1 << ANY_KIND_BITS), "not enough bits to represent type kinds");
+
 static bool type_equal(const Type *a, const Type *b) {
     if (a->kind != b->kind) {
         return false;
@@ -119,39 +121,39 @@ const Type *intern_type(Type *type) {
     return NULL;
 }
 
-const Type *prim_type(uint32_t kind, uint32_t size) {
+const Type *intern_prim_type(uint32_t kind, uint32_t size) {
     Type type = { .kind = kind, .size = size };
     return intern_type(&type);
 }
 
-const Type *array_type(const Type *elem_type) {
+const Type *intern_array_type(const Type *elem_type) {
     Type type = { .kind = KIND_ARRAY, .flags = TYPE_FLAG_UNSIZED, .target = elem_type };
     return intern_type(&type);
 }
 
-const Type *array_type_sized(const Type *elem_type, uint32_t elem_count) {
+const Type *intern_array_type_sized(const Type *elem_type, uint32_t elem_count) {
     Type type = { .kind = KIND_ARRAY, .size = elem_type->size * elem_count, .target = elem_type };
     return intern_type(&type);
 }
 
-const Type *ptr_type(const Type *elem_type) {
+const Type *intern_ptr_type(const Type *elem_type) {
     Type type = { .kind = KIND_PTR, .size = sizeof(void *), .target = elem_type };
     return intern_type(&type);
 }
 
-const Type *ref_type(const Type *elem_type) {
+const Type *intern_ref_type(const Type *elem_type) {
     Type type = { .kind = KIND_REF, .size = sizeof(void *), .target = elem_type };
     return intern_type(&type);
 }
 
-StructFieldArray *struct_field_array(uint32_t field_count, StructField *fields) {
+static StructFieldArray *struct_field_array(uint32_t field_count, StructField *fields) {
     StructFieldArray *field_array = malloc(sizeof(StructFieldArray) + sizeof(StructField) * field_count);
     field_array->length = field_count;
     memcpy(field_array->fields, fields, sizeof(StructField) * field_count);
     return field_array;
 }
 
-const Type *struct_type(uint32_t size, uint32_t field_count, StructField *fields) {
+const Type *intern_struct_type(uint32_t size, uint32_t field_count, StructField *fields) {
     StructFieldArray *field_array = struct_field_array(field_count, fields);
     Type type = { .kind = KIND_STRUCT, .size = size, .fields = field_array };
     if (field_count > 0 && fields[field_count - 1].type->flags & TYPE_FLAG_UNSIZED) {
@@ -160,27 +162,20 @@ const Type *struct_type(uint32_t size, uint32_t field_count, StructField *fields
     return intern_type(&type);
 }
 
-const Type *parse_type(Any form) {
-    if (symbolp(form)) {
-        const Symbol *sym = to_symbol(form);
-        if (sym == symbol_bool) { return type_b32; }
-        if (sym == symbol_u8) { return type_u8; }
-        if (sym == symbol_u16) { return type_u16; }
-        if (sym == symbol_u32) { return type_u32; }
-        if (sym == symbol_u64) { return type_u64; }
-        if (sym == symbol_i8) { return type_i8; }
-        if (sym == symbol_i16) { return type_i16; }
-        if (sym == symbol_i32) { return type_i32; }
-        if (sym == symbol_i64) { return type_i64; }
-        if (sym == symbol_f32) { return type_f32; }
-        if (sym == symbol_f64) { return type_f64; }
-    }
-    assert(0 && "can't parse type");
+static FunParamArray *fun_param_array(uint32_t param_count, FunParam *params) {
+    FunParamArray *param_array = malloc(sizeof(FunParamArray) + sizeof(FunParam) * param_count);
+    param_array->length = param_count;
+    memcpy(param_array->params, params, sizeof(FunParam) * param_count);
+    return param_array;
+}
+
+const Type *intern_fun_type(const Type *ret_type, uint32_t param_count, FunParam *params) {
+    FunParamArray *param_array = fun_param_array(param_count, params);
+    Type type = { .kind = KIND_FUN, .size = sizeof(void *), .target = ret_type, .params = param_array };
+    return intern_type(&type);
 }
 
 void init_types(void) {
-    TypeMap_init(&typemap, 512);
-
     Type *type = calloc(1, sizeof(Type));
     type->kind = KIND_STRUCT;
     type->size = sizeof(Type);
@@ -188,37 +183,37 @@ void init_types(void) {
     TypeMap_put(&typemap, type->hash, type);
 
     type_type = type;
-    type_ptr_type = ptr_type(type_type);
+    type_ptr_type = intern_ptr_type(type_type);
 
-    type_any = prim_type(KIND_ANY, sizeof(Any));
+    type_any = intern_prim_type(KIND_ANY, sizeof(Any));
 
-    type_unit = prim_type(KIND_UNIT, 0);
-    type_b32 = prim_type(KIND_BOOL, sizeof(bool));
+    type_unit = intern_prim_type(KIND_UNIT, 0);
+    type_b32 = intern_prim_type(KIND_BOOL, sizeof(bool));
 
-    type_u8 = prim_type(KIND_U8, sizeof(uint8_t));
-    type_u16 = prim_type(KIND_U16, sizeof(uint16_t));
-    type_u32 = prim_type(KIND_U32, sizeof(uint32_t));
-    type_u64 = prim_type(KIND_U64, sizeof(uint64_t));
+    type_u8 = intern_prim_type(KIND_U8, sizeof(uint8_t));
+    type_u16 = intern_prim_type(KIND_U16, sizeof(uint16_t));
+    type_u32 = intern_prim_type(KIND_U32, sizeof(uint32_t));
+    type_u64 = intern_prim_type(KIND_U64, sizeof(uint64_t));
 
-    type_i8 = prim_type(KIND_I8, sizeof(int8_t));
-    type_i16 = prim_type(KIND_I16, sizeof(int16_t));
-    type_i32 = prim_type(KIND_I32, sizeof(int32_t));
-    type_i64 = prim_type(KIND_I64, sizeof(int64_t));
+    type_i8 = intern_prim_type(KIND_I8, sizeof(int8_t));
+    type_i16 = intern_prim_type(KIND_I16, sizeof(int16_t));
+    type_i32 = intern_prim_type(KIND_I32, sizeof(int32_t));
+    type_i64 = intern_prim_type(KIND_I64, sizeof(int64_t));
 
-    type_f32 = prim_type(KIND_F32, sizeof(float));
-    type_f64 = prim_type(KIND_F64, sizeof(double));
+    type_f32 = intern_prim_type(KIND_F32, sizeof(float));
+    type_f64 = intern_prim_type(KIND_F64, sizeof(double));
 
-    type_ptr_symbol = ptr_type(array_type(type_u8));
-    type_ref_string = ref_type(array_type(type_u8));
+    type_ptr_symbol = intern_ptr_type(intern_array_type(type_u8));
+    type_ref_string = intern_ref_type(intern_array_type(type_u8));
 
-    const Type *type_cons = struct_type(sizeof(Cons), 2, (StructField[]) {
+    const Type *type_cons = intern_struct_type(sizeof(Cons), 2, (StructField[]) {
         { .name = intern_symbol_cstr("car"), .type = type_any, .offset = offsetof(Cons, car) },
         { .name = intern_symbol_cstr("cdr"), .type = type_any, .offset = offsetof(Cons, cdr) },
     });
-    type_ref_cons = ref_type(type_cons);
+    type_ref_cons = intern_ref_type(type_cons);
 
     /* complete Type type */
-    const Type *type_struct_field = struct_type(sizeof(StructField), 3, (StructField[]) {
+    const Type *type_struct_field = intern_struct_type(sizeof(StructField), 3, (StructField[]) {
         { .name = intern_symbol_cstr("name"), .type = type_ptr_symbol, .offset = offsetof(StructField, name) },
         { .name = intern_symbol_cstr("type"), .type = type_ptr_type, .offset = offsetof(StructField, type) },
         { .name = intern_symbol_cstr("offset"), .type = type_u32, .offset = offsetof(StructField, offset) },
@@ -228,9 +223,9 @@ void init_types(void) {
         { .name = intern_symbol_cstr("flags"), .type = type_u32, .offset = offsetof(Type, flags) },
         { .name = intern_symbol_cstr("size"), .type = type_u32, .offset = offsetof(Type, size) },
         { .name = intern_symbol_cstr("target"), .type = type_ptr_type, .offset = offsetof(Type, target) },
-        { .name = intern_symbol_cstr("fields"), .type = ptr_type(array_type(type_struct_field)), .offset = offsetof(Type, fields) },
+        { .name = intern_symbol_cstr("fields"), .type = intern_ptr_type(intern_array_type(type_struct_field)), .offset = offsetof(Type, fields) },
     });
 
-    assert(prim_type(KIND_U32, sizeof(uint32_t)));
-    assert(prim_type(KIND_U32, sizeof(uint32_t)) == prim_type(KIND_U32, sizeof(uint32_t)));
+    assert(intern_prim_type(KIND_U32, sizeof(uint32_t)));
+    assert(intern_prim_type(KIND_U32, sizeof(uint32_t)) == intern_prim_type(KIND_U32, sizeof(uint32_t)));
 }

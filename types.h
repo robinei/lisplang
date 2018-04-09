@@ -78,19 +78,23 @@
     PROPS_PTR(X)
 
 
-typedef union Word Word;
 typedef struct Any Any;
 typedef struct Type Type;
 typedef struct Cons Cons;
 typedef U8Array String;
 
-typedef Any(*FunPtr0)(void);
-typedef Any(*FunPtr1)(Any a);
-typedef Any(*FunPtr2)(Any a, Any b);
-typedef Any(*FunPtr3)(Any a, Any b, Any c);
+typedef Any (*FunPtr0)(void);
+typedef Any (*FunPtr1)(Any a);
+typedef Any (*FunPtr2)(Any a, Any b);
+typedef Any (*FunPtr3)(Any a, Any b, Any c);
 
-typedef union Word1 Word1;
-union Word1 {
+typedef void (*VoidFunPtr0)(void);
+typedef void (*VoidFunPtr1)(Any a);
+typedef void (*VoidFunPtr2)(Any a, Any b);
+typedef void (*VoidFunPtr3)(Any a, Any b, Any c);
+
+typedef union Word Word;
+union Word {
     bool b32;
 
     uint8_t u8;
@@ -122,7 +126,7 @@ union Word1 {
 
 struct Any {
     uintptr_t type;
-    Word1 val;
+    Word val;
 };
 
 
@@ -165,6 +169,8 @@ enum {
 
     KIND_BUILTIN,
     KIND_FUN,
+
+    NUM_TYPE_KINDS
 };
 
 #define IS_UNSIGNED_KIND(kind) ((kind) >= KIND_U8 && (kind) <= KIND_U64)
@@ -191,7 +197,7 @@ struct Type {
     uint32_t salt; /* used to make sure we can get a unique hash for each type */
     uint32_t hash; /* hash of this type. this field is not itself hashed! */
 
-    const Type *target; /* for PTR, REF and ARRAY types */
+    const Type *target; /* target type for PTR, REF. elem type for ARRAY. return type for FUN. */
     StructFieldArray *fields;
     FunParamArray *params;
 };
@@ -251,7 +257,14 @@ const Type *type_ptr_symbol;
 const Type *type_ref_string;
 const Type *type_ref_cons;
 
-const Type *parse_type(Any form);
+const Type *intern_prim_type(uint32_t kind, uint32_t size);
+const Type *intern_array_type(const Type *elem_type);
+const Type *intern_array_type_sized(const Type *elem_type, uint32_t elem_count);
+const Type *intern_ptr_type(const Type *elem_type);
+const Type *intern_ref_type(const Type *elem_type);
+const Type *intern_struct_type(uint32_t size, uint32_t field_count, StructField *fields);
+const Type *intern_fun_type(const Type *ret_type, uint32_t param_count, FunParam *params);
+
 void init_types(void);
 
 #endif

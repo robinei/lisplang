@@ -128,18 +128,14 @@ void interpret(uint64_t *ip, uint8_t *fp) {
     DISPATCH_CASE(OP_JTRUE)  if ( *(bool *)(fp + INSTR_A(instr))) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();
 
     DISPATCH_CASE(OP_TCALL) {
-        uint32_t fun_offset = INSTR_A(instr);
-        Function *fun = *(Function **)(fp + fun_offset);
-        fp += fun_offset;
+        Function *fun = *(Function **)(fp + INSTR_A(instr));
+        fp += INSTR_B(instr);
         ip = fun->code; /* tail call means we just overwrite these, and don't grow the call stack */
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_CALL) {
-        uint32_t fun_offset = INSTR_A(instr);
-        //uint32_t result_reg = INSTR_B(instr);
-        Function *fun = *(Function **)(fp + fun_offset);
-        interpret(fun->code, fp + fun_offset); /* just use the C call stack */
-        //fp[result_reg] = fp[fun_offset];
+        Function *fun = *(Function **)(fp + INSTR_A(instr));
+        interpret(fun->code, fp + INSTR_B(instr)); /* just use the C call stack */
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_RET) return; /* since we use the C call stack we just return */
@@ -163,11 +159,11 @@ void interpret(uint64_t *ip, uint8_t *fp) {
     FOR_ALL_BASIC(DEFINE_TO_ANY_INSTR)
 
     DISPATCH_CASE(OP_CALL_BUILTIN_1_VOID) {
-        (*(FunPtr1 *)ip++)(*(Any *)(fp + INSTR_A(instr)));
+        (*(VoidFunPtr1 *)ip++)(*(Any *)(fp + INSTR_A(instr)));
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_CALL_BUILTIN_2_VOID) {
-        (*(FunPtr2 *)ip++)(*(Any *)(fp + INSTR_A(instr)), *(Any *)(fp + INSTR_B(instr)));
+        (*(VoidFunPtr2 *)ip++)(*(Any *)(fp + INSTR_A(instr)), *(Any *)(fp + INSTR_B(instr)));
         DISPATCH_NEXT();
     }
     DISPATCH_CASE(OP_CALL_BUILTIN_1) {

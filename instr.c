@@ -43,8 +43,8 @@ uint64_t *print_instr(uint64_t *code) {
     case OP_JUMP: printf(INAME_FMT "%+d\n", "jump", (int32_t)INSTR_BC(instr)); break;
     case OP_JFALSE: printf(INAME_FMT "[%u] %+d\n", "jfalse", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
     case OP_JTRUE: printf(INAME_FMT "[%u] %+d\n", "jtrue", INSTR_A(instr), (int32_t)INSTR_BC(instr)); break;
-    case OP_TCALL: printf("tcall\n"); break;
-    case OP_CALL: printf("call\n"); break;
+    case OP_TCALL: printf(INAME_FMT "[%u] <- RUN [%u]\n", "tcall", INSTR_B(instr), INSTR_A(instr)); break;
+    case OP_CALL: printf(INAME_FMT "[%u] <- RUN [%u]\n", "call", INSTR_B(instr), INSTR_A(instr)); break;
     case OP_RET: printf("ret\n"); break;
     FOR_ALL_PRIM_MOVE(DEFINE_PRINT_MOVE)
     case OP_NOT_BOOL: printf(INAME_FMT "[%u] <- [%u]\n", "not/bool", INSTR_A(instr), INSTR_B(instr)); break;

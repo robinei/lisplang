@@ -54,9 +54,11 @@ const Symbol *symbol_i32;
 const Symbol *symbol_i64;
 const Symbol *symbol_f32;
 const Symbol *symbol_f64;
+const Symbol *symbol_array;
 
-void init_symbols(void);
 const Symbol *intern_symbol(const char *str, uint32_t length);
 const Symbol *intern_symbol_cstr(const char *str);
+
+void init_symbols(void);
 
 #endif

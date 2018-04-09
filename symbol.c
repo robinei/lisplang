@@ -56,8 +56,6 @@ const Symbol *intern_symbol_cstr(const char *str) {
 }
 
 void init_symbols(void) {
-    SymMap_init(&symbolmap, 512);
-
     symbol_if       = intern_symbol_cstr("if");
     symbol_let      = intern_symbol_cstr("let");
     symbol_quote    = intern_symbol_cstr("quote");
@@ -93,6 +91,7 @@ void init_symbols(void) {
     symbol_i64      = intern_symbol_cstr("i64");
     symbol_f32      = intern_symbol_cstr("f32");
     symbol_f64      = intern_symbol_cstr("f64");
+    symbol_array    = intern_symbol_cstr("array");
     
     assert(symbol_if);
     assert(intern_symbol_cstr("if") == symbol_if);

@@ -24,7 +24,7 @@ void print_form(Any form) {
     if (type == type_ref_cons) {
         printf("(");
         bool printed_one = false;
-        while (ANY_KIND(form) != KIND_UNIT) {
+        while (!nullp(form)) {
             if (printed_one) {
                 printf(" ");
             }
@@ -69,9 +69,8 @@ struct CodeBlock {
 };
 
 CodeBlock compile_block(Any form) {
-    CompilerCtx cctx = {0};
-    LabelMap_init(&cctx.label_map, 32);
-    BindingMap_init(&cctx.binding_map, 32);
+    GlobalEnv global_env = {0};
+    CompilerCtx cctx = { .global_env = &global_env };
 
     AstNode *ast = parse_form(&cctx, form, NULL);
     emit_code_block(&cctx, ast);
@@ -140,6 +139,7 @@ int main(int argc, char *argv[]) {
     CodeBlock block = compile_block(sexpr);
 
 #if 1
+    printf("\nrunning:\n");
     uint8_t stack[4096];
     before = clock();
     interpret(block.code, stack);

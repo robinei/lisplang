@@ -23,6 +23,7 @@
 #define MAKE_ANY_SYM(x) ((Any) { .type = MK_ANY_TYPE(type_ptr_symbol), .val.symbol_ptr = (x) })
 #define MAKE_ANY_TYPE(x) ((Any) { .type = MK_ANY_TYPE(type_ptr_type), .val.type = (x) })
 
+bool nullp(Any any);
 bool consp(Any any);
 bool symbolp(Any any);
 const Symbol *to_symbol(Any any);

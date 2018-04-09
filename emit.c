@@ -40,8 +40,8 @@ static void emit_jtrue(CompilerCtx *cctx, uint32_t cond_offset, uint32_t label) 
     emit(cctx, MK_INSTR_A_BC(OP_JTRUE_LABEL, cond_offset, label));
 }
 
-static void emit_call(CompilerCtx *cctx, uint32_t callable_offset, uint32_t result_offset) {
-    emit_op2(cctx, OP_CALL, callable_offset, result_offset);
+static void emit_call(CompilerCtx *cctx, uint32_t fun_offset, uint32_t dst_offset) {
+    emit_op2(cctx, OP_CALL, fun_offset, dst_offset);
 }
 
 static void emit_ret(CompilerCtx *cctx) {
@@ -49,10 +49,15 @@ static void emit_ret(CompilerCtx *cctx) {
 }
 
 #define DEFINE_LIT_EMITTER_32(UNAME, LNAME, TYPE, FMT) \
-static void emit_lit_ ## LNAME(CompilerCtx *cctx, uint32_t offset, TYPE val) { emit(cctx, MK_INSTR_A_BC(OP_LIT_ ## UNAME, offset, val)); }
+    static void emit_lit_ ## LNAME(CompilerCtx *cctx, uint32_t offset, TYPE val) { \
+        emit(cctx, MK_INSTR_A_BC(OP_LIT_ ## UNAME, offset, val)); \
+    }
 
 #define DEFINE_LIT_EMITTER_64(UNAME, LNAME, TYPE, FMT) \
-static void emit_lit_ ## LNAME(CompilerCtx *cctx, uint32_t offset, TYPE val) { emit(cctx, MK_INSTR_A(OP_LIT_ ## UNAME, offset)); emit(cctx, *(uint64_t *)&val); }
+    static void emit_lit_ ## LNAME(CompilerCtx *cctx, uint32_t offset, TYPE val) { \
+        emit(cctx, MK_INSTR_A(OP_LIT_ ## UNAME, offset)); \
+        emit(cctx, *(uint64_t *)&val); \
+    }
 
 static void emit_lit_f32(CompilerCtx *cctx, uint32_t offset, float val) { emit(cctx, MK_INSTR_A_BC(OP_LIT_F32, offset, *(uint32_t *)&val)); }
 
@@ -88,12 +93,10 @@ static uint32_t instr_word_count(uint64_t instr) {
 typedef struct U32Map U32Map;
 
 void strip_labels(CompilerCtx *cctx) {
-    U32Map label_offsets;
-    U32Map_init(&label_offsets, 128);
+    U32Map label_offsets = {0,};
 
     /* map from labels directly preceding jumps, to the target labels of those jumps */
-    U32Map replace_jump_labels;
-    U32Map_init(&replace_jump_labels, 128);
+    U32Map replace_jump_labels = {0,};
 
     uint32_t in = 0;
     uint32_t out = 0;
@@ -171,17 +174,21 @@ uint32_t emit_code_consuming_result(CompilerCtx *cctx, AstNode *node) {
     return offset;
 }
 
-static uint32_t alloc_stack_size(CompilerCtx *cctx, uint32_t size) {
+static uint32_t alloc_stack_for_size(CompilerCtx *cctx, uint32_t size) {
     uint32_t offset = cctx->stack_offset;
     cctx->stack_offset += size;
     return offset;
 }
 
-static uint32_t alloc_stack(CompilerCtx *cctx, AstNode *node) {
+static uint32_t alloc_stack_for_type(CompilerCtx *cctx, const Type *type) {
+    return alloc_stack_for_size(cctx, type->size);
+}
+
+static uint32_t alloc_stack_for_node(CompilerCtx *cctx, AstNode *node) {
     if (node->dst_binding) {
         return node->dst_binding->frame_offset;
     }
-    return alloc_stack_size(cctx, node->type->size);
+    return alloc_stack_for_type(cctx, node->type);
 }
 
 STATIC_ASSERT(sizeof(struct size_12_dummy_struct) == 12, "bad stuct size");
@@ -201,7 +208,7 @@ static uint32_t maybe_move(CompilerCtx *cctx, uint32_t dst_offset, uint32_t resu
 }
 
 static uint32_t emit_bin_op(CompilerCtx *cctx, uint32_t base_op, AstPrimNode *prim) {
-    uint32_t dst_offset = alloc_stack(cctx, (AstNode *)prim);
+    uint32_t dst_offset = alloc_stack_for_node(cctx, (AstNode *)prim);
     uint32_t offset0 = emit_code(cctx, prim->arg_nodes[0]);
     uint32_t offset1 = emit_code(cctx, prim->arg_nodes[1]);
     uint32_t op = base_op + (prim->arg_nodes[0]->type->kind - KIND_U8);
@@ -221,7 +228,7 @@ static void emit_to_any(CompilerCtx *cctx, uint32_t dst_offset, uint32_t value_o
 
 #define EMIT_PRIM(UNAME, LNAME, TYPE, FMT) \
     case KIND_ ## UNAME: { \
-        uint32_t dst_offset = alloc_stack(cctx, node); \
+        uint32_t dst_offset = alloc_stack_for_node(cctx, node); \
         emit_lit_ ## LNAME(cctx, dst_offset, lit->form.val.LNAME); \
         return dst_offset; \
     }
@@ -239,12 +246,12 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
     }
     case AST_VAR_LOCAL: {
         AstVarNode *var = (AstVarNode *)node;
-        uint32_t dst_offset = alloc_stack(cctx, node);
+        uint32_t dst_offset = alloc_stack_for_node(cctx, node);
         return maybe_move(cctx, dst_offset, var->binding->frame_offset, var->binding->type->size);
     }
-    case AST_LET: {
-        AstLetNode *let = (AstLetNode *)node;
-        uint32_t dst_offset = alloc_stack(cctx, node);
+    case AST_SCOPE_LET: {
+        AstScopeNode *let = (AstScopeNode *)node;
+        uint32_t dst_offset = alloc_stack_for_node(cctx, node);
         uint32_t base_offset = cctx->stack_offset;
 
         for (uint32_t i = 0; i < let->binding_count; ++i) {
@@ -258,9 +265,54 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         cctx->stack_offset = base_offset;
         return dst_offset;
     }
+    case AST_SCOPE_FUN: {
+        AstScopeNode *fun = (AstScopeNode *)node;
+        assert(node->type->kind == KIND_FUN);
+        //assert(fun->body_node->dst_binding);
+        //assert(fun->body_node->dst_binding->frame_offset == 0);
+
+        CompilerCtx fun_cctx = { .global_env = cctx->global_env };
+        fun_cctx.stack_offset = node->type->target->size; /* reserve space for return value */
+
+        for (uint32_t i = 0; i < fun->binding_count; ++i) {
+            Binding *binding = fun->bindings + i;
+            binding->frame_offset = fun_cctx.stack_offset;
+            fun_cctx.stack_offset += binding->type->size;
+        }
+
+        uint32_t result_offset = emit_code(&fun_cctx, fun->body_node);
+        //assert(result_offset == 0);
+        maybe_move(&fun_cctx, 0, result_offset, node->type->target->size);
+        emit_ret(&fun_cctx);
+        strip_labels(&fun_cctx);
+        printf("Compiled function: {\n");
+        print_code(fun_cctx.code, fun_cctx.code_used);
+        printf("}\n");
+
+        Function *function = calloc(1, sizeof(Function));
+        function->code = fun_cctx.code;
+        LabelMap_free(&fun_cctx.label_map);
+
+        uint32_t dst_offset = alloc_stack_for_node(cctx, node);
+        emit_lit_ptr(cctx, dst_offset, function);
+        return dst_offset;
+    }
+    case AST_CALL: {
+        AstCallNode *call = (AstCallNode *)node;
+        uint32_t dst_offset = alloc_stack_for_node(cctx, node);
+        uint32_t base_offset = cctx->stack_offset;
+        for (uint32_t i = 0; i < call->arg_count; ++i) {
+            uint32_t offset = emit_code(cctx, call->arg_nodes[i]);
+        }
+        assert(call->fun_node->type->kind == KIND_FUN);
+        uint32_t fun_offset = emit_code(cctx, call->fun_node);
+        emit_call(cctx, fun_offset, dst_offset);
+        cctx->stack_offset = base_offset;
+        return dst_offset;
+    }
     case AST_IF: {
         AstIfNode *_if = (AstIfNode *)node;
-        uint32_t dst_offset = alloc_stack(cctx, node);
+        uint32_t dst_offset = alloc_stack_for_node(cctx, node);
         uint32_t else_label = gen_label(cctx);
         uint32_t end_label = gen_label(cctx);
 
@@ -305,7 +357,7 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
     }
     case AST_PRIM_NOT: {
         AstPrimNode *prim = (AstPrimNode *)node;
-        uint32_t dst_offset = alloc_stack(cctx, prim->arg_nodes[0]);
+        uint32_t dst_offset = alloc_stack_for_node(cctx, prim->arg_nodes[0]);
         uint32_t offset = emit_code(cctx, prim->arg_nodes[0]);
         emit_op2(cctx, OP_NOT_BOOL, dst_offset, offset);
         return dst_offset;
@@ -338,7 +390,7 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         uint32_t dst_offset = offset;
         uint32_t base_offset = cctx->stack_offset;
         if (dst_offset < base_offset) {
-            dst_offset = alloc_stack_size(cctx, sizeof(Any));
+            dst_offset = alloc_stack_for_type(cctx, type_any);
             cctx->stack_offset = base_offset;
         }
         emit_to_any(cctx, dst_offset, offset, prim->arg_nodes[0]->type);
@@ -346,7 +398,7 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         emit(cctx, (uint64_t)print_any);
         return 0;
     }
-    default: assert(0);
+    default: assert(0 && "unimplemented node type");
     }
 }
 

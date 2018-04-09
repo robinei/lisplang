@@ -14,9 +14,9 @@ typedef struct Binding Binding;
 struct Binding {
     const Symbol *symbol;
     const Type *type;
-    struct AstNode *init_node;
-    uint32_t frame_offset;
-    uint32_t store_count;
+    struct AstNode *init_node; /* ast node for the initial value of this binding (used for let bindings) */
+    uint32_t frame_offset; /* offset of this binding in functions's stack frame */
+    uint32_t store_count; /* number of places where this binding is modified (excluding initial bind) */
 };
 
 #define EXPAND_INTERFACE
@@ -38,11 +38,21 @@ struct PrevBinding {
     Binding *binding;
 };
 
+typedef struct GlobalEnv GlobalEnv;
+struct GlobalEnv {
+    PrevBinding *savestack;
+    uint32_t savestack_used;
+    uint32_t savestack_capacity;
+    BindingMap map;
+};
+
 typedef struct CompilerCtx CompilerCtx;
 struct CompilerCtx {
     uint64_t *code;
     uint32_t code_used;
     uint32_t code_capacity;
+
+    uint32_t stack_offset;
 
     uint32_t label_counter;
     LabelMap label_map;
@@ -50,12 +60,7 @@ struct CompilerCtx {
     uint32_t label_stack_used;
     uint32_t label_stack_capacity;
 
-    BindingMap binding_map;
-    PrevBinding *binding_stack;
-    uint32_t binding_stack_used;
-    uint32_t binding_stack_capacity;
-
-    uint32_t stack_offset;
+    GlobalEnv *global_env;
 };
 
 #endif
