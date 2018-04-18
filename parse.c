@@ -166,6 +166,7 @@ static AstLiteralNode *create_literal(CompilerCtx *cctx, Any form, Binding *dst_
 
 static AstPrimNode *alloc_prim_node(CompilerCtx *cctx, AstNodeKind kind, Any args) {
     uint32_t arg_count = list_length(args);
+    assert(arg_count > 0);
     AstPrimNode *node = create_node(cctx, kind, sizeof(AstPrimNode) + sizeof(AstNode *) * arg_count);
     node->arg_count = arg_count;
     return node;
@@ -406,6 +407,25 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 return (AstNode *)node;
             }
 
+            if (symbol == symbol_do) {
+                Any rest = cdr(form);
+                AstPrimNode *node = alloc_prim_node(cctx, AST_PRIM_DO, rest);
+
+                for (uint32_t i = 0; i < node->arg_count; ++i) {
+                    Any expr = car(rest);
+                    rest = cdr(rest);
+                    if (i < node->arg_count - 1) {
+                        node->arg_nodes[i] = parse_form(cctx, expr, NULL);
+                    } else {
+                        node->arg_nodes[i] = parse_form(cctx, expr, dst_binding);
+                    }
+                }
+
+                node->n.type = node->arg_nodes[node->arg_count - 1]->type;
+                node->n.dst_binding = node->arg_nodes[node->arg_count - 1]->dst_binding;
+                return (AstNode *)node;
+            }
+
             if (symbol == symbol_tagbody) {
                 Any rest = cdr(form);
                 AstPrimNode *node = alloc_prim_node(cctx, AST_PRIM_TAGBODY, rest);
@@ -413,10 +433,10 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
 
                 uint32_t label_count = 0;
                 for (uint32_t i = 0; i < node->arg_count; ++i) {
-                    Any stmt = car(rest);
+                    Any expr = car(rest);
                     rest = cdr(rest);
-                    if (ANY_TYPE(stmt) == type_ptr_symbol) {
-                        AstLabelNode *label_node = create_label(cctx, stmt.val.symbol_ptr, gen_label(cctx));
+                    if (ANY_TYPE(expr) == type_ptr_symbol) {
+                        AstLabelNode *label_node = create_label(cctx, expr.val.symbol_ptr, gen_label(cctx));
                         node->arg_nodes[i] = (AstNode *)label_node;
                         push_label(cctx, label_node->name, label_node->id);
                         ++label_count;
@@ -425,10 +445,10 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
 
                 rest = cdr(form);
                 for (uint32_t i = 0; i < node->arg_count; ++i) {
-                    Any stmt = car(rest);
+                    Any expr = car(rest);
                     rest = cdr(rest);
                     if (!node->arg_nodes[i]) {
-                        node->arg_nodes[i] = parse_form(cctx, stmt, NULL);
+                        node->arg_nodes[i] = parse_form(cctx, expr, NULL);
                     }
                 }
 

@@ -13,6 +13,7 @@ enum AstNodeKind {
     AST_CALL,
     AST_IF,
     AST_LABEL,
+    AST_PRIM_DO,
     AST_PRIM_TAGBODY,
     AST_PRIM_GO,
     AST_PRIM_ASSIGN,

@@ -329,6 +329,19 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         assert(then_offset == else_offset);
         return dst_offset;
     }
+    case AST_PRIM_DO: {
+        AstPrimNode *prim = (AstPrimNode *)node;
+        uint32_t dst_offset = 0;
+        for (uint32_t i = 0; i < prim->arg_count; ++i) {
+            AstNode *arg = prim->arg_nodes[i];
+            if (i < prim->arg_count - 1) {
+                emit_code_consuming_result(cctx, arg);
+            } else {
+                dst_offset = emit_code(cctx, arg);
+            }
+        }
+        return dst_offset;
+    }
     case AST_PRIM_TAGBODY: {
         AstPrimNode *prim = (AstPrimNode *)node;
         for (uint32_t i = 0; i < prim->arg_count; ++i) {
