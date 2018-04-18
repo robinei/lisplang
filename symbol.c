@@ -61,6 +61,7 @@ void init_symbols(void) {
     symbol_quote    = intern_symbol_cstr("quote");
     symbol_fun      = intern_symbol_cstr("fun");
     symbol_def      = intern_symbol_cstr("def");
+    symbol_macrodef = intern_symbol_cstr("macro-def");
     symbol_do       = intern_symbol_cstr("do");
     symbol_assign   = intern_symbol_cstr("=");
     symbol_inc      = intern_symbol_cstr("inc");

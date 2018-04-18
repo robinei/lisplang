@@ -3,12 +3,7 @@
 
 #include "instr.h"
 
-#define EXPAND_INTERFACE
-#define NAME LabelMap
-#define KEY_TYPE const Symbol *
-#define VALUE_TYPE uint32_t
-#include "hashtable.h"
-typedef struct LabelMap LabelMap;
+
 
 typedef struct Binding Binding;
 struct Binding {
@@ -26,25 +21,44 @@ struct Binding {
 #include "hashtable.h"
 typedef struct BindingMap BindingMap;
 
-typedef struct PrevLabel PrevLabel;
-struct PrevLabel {
-    const Symbol *symbol;
-    uint32_t label;
-};
-
 typedef struct PrevBinding PrevBinding;
 struct PrevBinding {
     const Symbol *symbol;
     Binding *binding;
 };
 
-typedef struct GlobalEnv GlobalEnv;
-struct GlobalEnv {
+typedef struct BindingCtx BindingCtx;
+struct BindingCtx {
     PrevBinding *savestack;
     uint32_t savestack_used;
     uint32_t savestack_capacity;
     BindingMap map;
 };
+
+
+
+#define EXPAND_INTERFACE
+#define NAME LabelMap
+#define KEY_TYPE const Symbol *
+#define VALUE_TYPE uint32_t
+#include "hashtable.h"
+typedef struct LabelMap LabelMap;
+
+typedef struct PrevLabel PrevLabel;
+struct PrevLabel {
+    const Symbol *symbol;
+    uint32_t label;
+};
+
+
+
+typedef struct Function Function;
+struct Function {
+    const Type *type;
+    uint64_t *code;
+};
+
+
 
 typedef struct CompilerCtx CompilerCtx;
 struct CompilerCtx {
@@ -60,7 +74,7 @@ struct CompilerCtx {
     uint32_t label_stack_used;
     uint32_t label_stack_capacity;
 
-    GlobalEnv *global_env;
+    BindingCtx *bindings;
 };
 
 #endif

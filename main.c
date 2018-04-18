@@ -69,8 +69,8 @@ struct CodeBlock {
 };
 
 CodeBlock compile_block(Any form) {
-    GlobalEnv global_env = {0};
-    CompilerCtx cctx = { .global_env = &global_env };
+    BindingCtx bindings = {0};
+    CompilerCtx cctx = { .bindings = &bindings };
 
     form = expand_form(&cctx, form);
 
@@ -78,7 +78,7 @@ CodeBlock compile_block(Any form) {
     print_form(form);
     printf("\n\n");
 
-    AstNode *ast = parse_form(&cctx, form, NULL);
+    AstNode *ast = parse_form(&cctx, form, NULL, PARSE_FLAG_TOPLEVEL | PARSE_FLAG_TAILPOS, NULL);
     emit_code_block(&cctx, ast);
     
     printf("\nbefore strip:\n");

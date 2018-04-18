@@ -1,5 +1,6 @@
 #include "interpret.h"
 #include "instr.h"
+#include "compile.h"
 
 #include <stdio.h>
 
@@ -30,6 +31,8 @@
 #define BEGIN_DISPATCH() \
     static void *dispatch_table[] = { \
         NULL, \
+        &&label_OP_DEF, \
+        &&label_OP_MACRODEF, \
         NULL, \
         NULL, \
         NULL, \
@@ -122,6 +125,13 @@
 
 void interpret(uint64_t *ip, uint8_t *fp) {
     BEGIN_DISPATCH()
+
+    DISPATCH_CASE(OP_DEF) {
+        DISPATCH_NEXT();
+    }
+    DISPATCH_CASE(OP_MACRODEF) {
+        DISPATCH_NEXT();
+    }
 
     DISPATCH_CASE(OP_JUMP) ip += (int32_t)INSTR_BC(instr) - 1; DISPATCH_NEXT();
     DISPATCH_CASE(OP_JFALSE) if (!*(bool *)(fp + INSTR_A(instr))) { ip += (int32_t)INSTR_BC(instr) - 1; } DISPATCH_NEXT();

@@ -36,6 +36,8 @@ uint64_t *print_instr(uint64_t *code) {
 
     switch (op) {
     case OP_NOP: printf("nop\n"); break;
+    case OP_DEF: printf("def\n"); break;
+    case OP_MACRODEF: printf("macro-def\n"); break;
     case OP_LABEL: printf(":%u\n", INSTR_BC(instr)); break;
     case OP_JUMP_LABEL: printf(INAME_FMT ":%u\n", "jump", INSTR_BC(instr)); break;
     case OP_JFALSE_LABEL: printf(INAME_FMT "[%u] :%u\n", "jfalse", INSTR_A(instr), INSTR_BC(instr)); break;

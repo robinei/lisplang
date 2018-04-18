@@ -33,6 +33,10 @@ struct size_16_dummy_struct { uint64_t a, b; };
 
 enum {
     OP_NOP,
+
+    /* these will only be generated for top-level code */
+    OP_DEF,
+    OP_MACRODEF,
     
     OP_LABEL, /* labels are eliminated during compilation */
 

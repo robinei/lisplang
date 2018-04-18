@@ -23,8 +23,7 @@ static Any expand_and_maybe_wrap_in_do(CompilerCtx *cctx, Any form) {
         return form;
     }
     form = expand_all(cctx, form);
-    uint32_t len = list_length(form);
-    if (len == 1) {
+    if (nullp(cdr(form))) {
         return form;
     }
     return cons(cons(MAKE_ANY_SYM(symbol_do), form), ANY_UNIT);
@@ -65,9 +64,6 @@ Any expand_form(CompilerCtx *cctx, Any form) {
             Any params = car(args);
             Any body = cdr(args);
             return cons(head, cons(params, expand_and_maybe_wrap_in_do(cctx, body)));
-        }
-        if (sym == symbol_do || sym == symbol_tagbody) {
-            return cons(head, expand_all(cctx, args));
         }
         /* TODO: if symbol is a macro then run the macro to expand the form */
     }

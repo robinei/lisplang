@@ -271,7 +271,7 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         //assert(fun->body_node->dst_binding);
         //assert(fun->body_node->dst_binding->frame_offset == 0);
 
-        CompilerCtx fun_cctx = { .global_env = cctx->global_env };
+        CompilerCtx fun_cctx = { .bindings = cctx->bindings };
         fun_cctx.stack_offset = node->type->target->size; /* reserve space for return value */
 
         for (uint32_t i = 0; i < fun->binding_count; ++i) {
@@ -290,6 +290,7 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         printf("}\n");
 
         Function *function = calloc(1, sizeof(Function));
+        function->type = node->type;
         function->code = fun_cctx.code;
         LabelMap_free(&fun_cctx.label_map);
 

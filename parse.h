@@ -35,7 +35,9 @@ enum AstNodeKind {
 
 typedef struct AstNode AstNode;
 struct AstNode {
-    AstNodeKind kind;
+    AstNodeKind kind : 6;
+    bool is_in_tailpos: 1;
+    bool is_in_argpos: 1;
     const Type *type;
     Binding *dst_binding;
 };
@@ -55,6 +57,8 @@ struct AstVarNode {
 typedef struct AstScopeNode AstScopeNode;
 struct AstScopeNode {
     AstNode n;
+    AstScopeNode *parent_fun;
+    AstScopeNode *parent_scope;
     AstNode *body_node;
     uint32_t binding_count;
     Binding bindings[];
@@ -91,7 +95,14 @@ struct AstPrimNode {
 };
 
 
+enum {
+    PARSE_FLAG_TOPLEVEL = 1 << 0,
+    PARSE_FLAG_TAILPOS = 1 << 1,
+    PARSE_FLAG_ARGPOS = 1 << 2,
+};
+
+AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding, uint32_t flags, AstScopeNode *scope);
+
 uint32_t gen_label(CompilerCtx *cctx);
-AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding);
 
 #endif

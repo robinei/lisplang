@@ -5,9 +5,9 @@
     (print (+ x (inc x))))
 
   (let (x 0
-        f (fun (x :: i32)
-            (* x 2)))
-    (= x (f 10))
+        g (fun (x :: i32) (* x 2))
+        f (fun (x :: i32) (g x)))
+    (= x (g 10))
     (print x))
 
   (let (n :: i32 100000000

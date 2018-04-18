@@ -226,11 +226,6 @@ struct Cons {
     Any cdr;
 };
 
-typedef struct Function Function;
-struct Function {
-    uint64_t *code;
-};
-
 
 const Type *type_type;
 const Type *type_ptr_type;

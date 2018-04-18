@@ -24,6 +24,7 @@ const Symbol *symbol_let;
 const Symbol *symbol_quote;
 const Symbol *symbol_fun;
 const Symbol *symbol_def;
+const Symbol *symbol_macrodef;
 const Symbol *symbol_do;
 const Symbol *symbol_assign;
 const Symbol *symbol_inc;
