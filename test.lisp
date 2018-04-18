@@ -1,12 +1,14 @@
 (do
-  (let (x 1)
+  (if #t (print 123))
+
+  (let x 1
     (print (+ x (inc x))))
 
   (let (x 0
         f (fun (x :: i32)
             (* x 2)))
-    (do (= x (f 10))
-        (print x)))
+    (= x (f 10))
+    (print x))
 
   (let (n :: i32 100000000
         a 0

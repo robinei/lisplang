@@ -385,15 +385,9 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 rest = cdr(rest);
                 Any then_form = car(rest);
                 rest = cdr(rest);
-                Any else_form;
-                if (!nullp(rest)) {
-                    else_form = car(rest);
-                    rest = cdr(rest);
-                    assert(nullp(rest));
-                }
-                else {
-                    else_form = ANY_UNIT;
-                }
+                Any else_form = car(rest);
+                rest = cdr(rest);
+                assert(nullp(rest));
 
                 AstIfNode *node = create_node(cctx, AST_IF, sizeof(AstIfNode));
                 node->cond_node = parse_form(cctx, cond_form, NULL);
@@ -520,8 +514,6 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding) {
                 node->n.type = type_unit;
                 return (AstNode *)node;
             }
-
-            /* TODO: if symbol is a macro: return parse_form(macro_expand(form)) */
         }
 
         /* call */

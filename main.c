@@ -3,8 +3,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "any.h"
 #include "read.h"
+#include "expand.h"
 #include "emit.h"
 #include "interpret.h"
 
@@ -72,6 +72,12 @@ CodeBlock compile_block(Any form) {
     GlobalEnv global_env = {0};
     CompilerCtx cctx = { .global_env = &global_env };
 
+    form = expand_form(&cctx, form);
+
+    printf("\nexpanded program:\n");
+    print_form(form);
+    printf("\n\n");
+
     AstNode *ast = parse_form(&cctx, form, NULL);
     emit_code_block(&cctx, ast);
     
@@ -133,6 +139,7 @@ int main(int argc, char *argv[]) {
 
     Any sexpr = read_cstr(read_file("test.lisp"));
 
+    printf("\noriginal program:\n");
     print_form(sexpr);
     printf("\n");
 

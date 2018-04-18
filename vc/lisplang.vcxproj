@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClInclude Include="..\any.h" />
     <ClInclude Include="..\compile.h" />
+    <ClInclude Include="..\expand.h" />
     <ClInclude Include="..\fnv.h" />
     <ClInclude Include="..\hashtable.h" />
     <ClInclude Include="..\instr.h" />
@@ -34,6 +35,7 @@
   <ItemGroup>
     <ClCompile Include="..\any.c" />
     <ClCompile Include="..\emit.c" />
+    <ClCompile Include="..\expand.c" />
     <ClCompile Include="..\instr.c" />
     <ClCompile Include="..\interpret.c" />
     <ClCompile Include="..\main.c" />
