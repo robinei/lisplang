@@ -57,6 +57,7 @@ const Symbol *intern_symbol_cstr(const char *str) {
 
 void init_symbols(void) {
     symbol_if       = intern_symbol_cstr("if");
+    symbol_when     = intern_symbol_cstr("when");
     symbol_let      = intern_symbol_cstr("let");
     symbol_quote    = intern_symbol_cstr("quote");
     symbol_fun      = intern_symbol_cstr("fun");

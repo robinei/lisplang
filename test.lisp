@@ -17,9 +17,9 @@
         zero 0)
       (tagbody
         start
-          (if (> (dec n) zero)
-              (do (= temp b)
-                  (= b (+ b a))
-                  (= a temp)
-                  (go start)))
+          (when (> (dec n) zero)
+            (= temp b)
+            (= b (+ b a))
+            (= a temp)
+            (go start))
           (print b))))

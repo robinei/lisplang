@@ -20,6 +20,7 @@ struct Symbol {
 };
 
 const Symbol *symbol_if;
+const Symbol *symbol_when;
 const Symbol *symbol_let;
 const Symbol *symbol_quote;
 const Symbol *symbol_fun;
