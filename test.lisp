@@ -1,8 +1,19 @@
 (do
   (if #t (print 123))
 
+  (do (print 666))
+
   (let x 1
     (print (+ x (inc x))))
+
+  (let x 1
+       y 100
+    (print (+ x y)))
+
+  (do (let x 2)
+      (let y 5
+           z 10)
+      (print (+ x (+ y z))))
 
   (let (x 0
         g (fun (x :: i32) (* x 2))

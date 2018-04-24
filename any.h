@@ -34,11 +34,16 @@ Any to_any(void *ptr, const Type *type);
 void from_any(Any any, void *dst);
 Any make_string(const char *str);
 Any make_symbol(const char *str);
+
 Any cons(Any car, Any cdr);
 Any make_list(Any first, ...);
 Any car(Any cons);
 Any cdr(Any cons);
 uint32_t list_length(Any lst);
+Any list_nth(Any lst, uint32_t n);
+Any list_take(Any lst, uint32_t n);
+Any list_drop(Any lst, uint32_t n);
+
 Any array_length(Any arr);
 Any array_get(Any arr, Any idx);
 Any array_set(Any arr, Any idx, Any val);

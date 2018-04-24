@@ -164,6 +164,27 @@ uint32_t list_length(Any lst) {
     return len;
 }
 
+Any list_nth(Any lst, uint32_t n) {
+    if (n == 0) {
+        return car(lst);
+    }
+    return list_nth(cdr(lst), n - 1);
+}
+
+Any list_take(Any lst, uint32_t n) {
+    if (n == 0) {
+        return ANY_UNIT;
+    }
+    return cons(car(lst), list_take(cdr(lst), n - 1));
+}
+
+Any list_drop(Any lst, uint32_t n) {
+    if (n == 0) {
+        return lst;
+    }
+    return list_drop(cdr(lst), n - 1);
+}
+
 Any array_length(Any arr) {
     assert(IS_PTR_KIND(ANY_KIND(arr)));
     
