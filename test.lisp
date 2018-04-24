@@ -1,5 +1,9 @@
 (do
   (if #t (print 123))
+  
+  (unless #f
+    (print 0)
+    (print 1))
 
   (do (print 666))
 

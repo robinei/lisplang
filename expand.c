@@ -77,11 +77,16 @@ Any expand_form(CompilerCtx *cctx, Any form) {
             }
             return cons(head, cons(cond_form, cons(then_form, cons(ANY_UNIT, ANY_UNIT))));
         }
-        /* TODO: replace "when" expansion with macro */
+        /* TODO: replace "when" and "unless" expansion with macro */
         if (sym == symbol_when) {
             Any cond_form = expand_form(cctx, car(args));
             Any body = maybe_wrap_in_do(cctx, cdr(args));
             return cons(MAKE_ANY_SYM(symbol_if), cons(cond_form, cons(body, cons(ANY_UNIT, ANY_UNIT))));
+        }
+        if (sym == symbol_unless) {
+            Any cond_form = expand_form(cctx, car(args));
+            Any body = maybe_wrap_in_do(cctx, cdr(args));
+            return cons(MAKE_ANY_SYM(symbol_if), cons(cond_form, cons(ANY_UNIT, cons(body, ANY_UNIT))));
         }
         if (sym == symbol_do) {
             Any body = unflatten_lets(cctx, args);
