@@ -1,5 +1,6 @@
 #include "emit.h"
 #include "any.h"
+#include "pprint.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -411,7 +412,7 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         }
         emit_to_any(cctx, dst_offset, offset, prim->arg_nodes[0]->type);
         emit_op1(cctx, OP_CALL_BUILTIN_1_VOID, dst_offset);
-        emit(cctx, (uint64_t)print_any);
+        emit(cctx, (uint64_t)pretty_print);
         return 0;
     }
     default: assert(0 && "unimplemented node type");

@@ -7,40 +7,8 @@
 #include "expand.h"
 #include "emit.h"
 #include "interpret.h"
+#include "pprint.h"
 
-
-#define DEF_VAL_PRINTER(UNAME, LNAME, TYPE, FMT) case KIND_ ## UNAME: printf(FMT, form.val.LNAME); return;
-
-void print_form(Any form) {
-    const Type *type = ANY_TYPE(form);
-    if (type == type_ref_string) {
-        printf("\"%s\"", form.val.u8_array_ptr->data);
-        return;
-    }
-    if (type == type_ptr_symbol) {
-        printf("%s", form.val.symbol_ptr->name->data);
-        return;
-    }
-    if (type == type_ref_cons) {
-        printf("(");
-        bool printed_one = false;
-        while (!nullp(form)) {
-            if (printed_one) {
-                printf(" ");
-            }
-            print_form(car(form));
-            form = cdr(form);
-            printed_one = true;
-        }
-        printf(")");
-        return;
-    }
-    switch (ANY_KIND(form)) {
-    case KIND_UNIT: printf("()"); return;
-    FOR_ALL_PRIM(DEF_VAL_PRINTER)
-    }
-    assert(0 && "missing printer");
-}
 
 static char *read_file(const char *filename) {
     char *str;
@@ -75,7 +43,7 @@ CodeBlock compile_block(Any form) {
     form = expand_form(&cctx, form);
 
     printf("\nexpanded program:\n");
-    print_form(form);
+    pretty_print(form);
     printf("\n\n");
 
     AstNode *ast = parse_form(&cctx, form, NULL, PARSE_FLAG_TOPLEVEL | PARSE_FLAG_TAILPOS, NULL);
@@ -140,7 +108,7 @@ int main(int argc, char *argv[]) {
     Any sexpr = read_cstr(read_file("test.lisp"));
 
     printf("\noriginal program:\n");
-    print_form(sexpr);
+    pretty_print(sexpr);
     printf("\n");
 
     CodeBlock block = compile_block(sexpr);

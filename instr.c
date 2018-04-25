@@ -1,5 +1,6 @@
 #include "instr.h"
 #include "any.h"
+#include "pprint.h"
 
 #include <stdio.h>
 
@@ -24,7 +25,7 @@
 #define DEFINE_PRINT_TO_ANY(UNAME, LNAME, TYPE, FMT) case OP_ ## UNAME ## _TO_ANY: printf(INAME_FMT "[%u] <- [%u]\n", "to_any/" #LNAME, INSTR_A(instr), INSTR_B(instr)); break;
 
 static const char *fun_name_or_default(void *builtin, const char *default_str) {
-    if (builtin == print_any) { return "print_any"; }
+    if (builtin == pretty_print) { return "pprint/any"; }
     return default_str;
 }
 

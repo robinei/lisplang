@@ -109,14 +109,8 @@ Any expand_form(CompilerCtx *cctx, Any form) {
             Any bindings = car(args);
             Any body = cdr(args);
             if (symbolp(bindings)) {
-                uint32_t len = list_length(args);
-                if (len % 2) {
-                    bindings = list_take(args, len - 1);
-                    body = list_drop(args, len - 1);
-                } else {
-                    bindings = args;
-                    body = ANY_UNIT;
-                }
+                bindings = args;
+                body = ANY_UNIT;
             }
             if (!nullp(body)) {
                 body = cons(maybe_wrap_in_do(cctx, body), ANY_UNIT);
