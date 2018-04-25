@@ -1,11 +1,12 @@
 (do
-  (if #t (print 123))
+  (if #t (do (print 123)))
   
   (unless #f
     (print 0)
     (print 1))
 
-  (do (print 666))
+  (do (print 666)
+      (print 667))
 
   (let x 1
     (print (+ x (inc x))))

@@ -185,6 +185,13 @@ Any list_drop(Any lst, uint32_t n) {
     return list_drop(cdr(lst), n - 1);
 }
 
+Any list_append(Any a, Any b) {
+    if (nullp(a)) {
+        return b;
+    }
+    return cons(car(a), list_append(cdr(a), b));
+}
+
 Any array_length(Any arr) {
     assert(IS_PTR_KIND(ANY_KIND(arr)));
     

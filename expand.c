@@ -23,30 +23,35 @@ static Any expand_let_bindings(CompilerCtx *cctx, Any form) {
 
 static Any maybe_wrap_in_do(CompilerCtx *cctx, Any form);
 
-static Any unflatten_lets(CompilerCtx *cctx, Any form) {
+static Any process_expr_seq(CompilerCtx *cctx, Any form) {
     if (!consp(form)) {
         return form;
     }
     Any part = expand_form(cctx, car(form));
     if (consp(part)) {
         Any head = car(part);
-        if (symbolp(head) && head.val.symbol_ptr == symbol_let) {
-            Any args = cdr(part);
-            if (nullp(cdr(args))) {
-                Any bindings = car(args);
-                Any body = maybe_wrap_in_do(cctx, cdr(form));
-                return cons(cons(MAKE_ANY_SYM(symbol_let), cons(bindings, cons(body, ANY_UNIT))), ANY_UNIT);
+        if (symbolp(head)) {
+            if (head.val.symbol_ptr == symbol_let) {
+                Any args = cdr(part);
+                if (nullp(cdr(args))) {
+                    Any bindings = car(args);
+                    Any body = maybe_wrap_in_do(cctx, cdr(form));
+                    return cons(cons(MAKE_ANY_SYM(symbol_let), cons(bindings, cons(body, ANY_UNIT))), ANY_UNIT);
+                }
+            }
+            else if (head.val.symbol_ptr == symbol_do) {
+                return list_append(cdr(part), process_expr_seq(cctx, cdr(form)));
             }
         }
     }
-    return cons(part, unflatten_lets(cctx, cdr(form)));
+    return cons(part, process_expr_seq(cctx, cdr(form)));
 }
 
 static Any maybe_wrap_in_do(CompilerCtx *cctx, Any form) {
     if (!consp(form)) {
         return form;
     }
-    form = unflatten_lets(cctx, form);
+    form = process_expr_seq(cctx, form);
     if (nullp(cdr(form))) {
         return car(form);
     }
@@ -89,7 +94,7 @@ Any expand_form(CompilerCtx *cctx, Any form) {
             return cons(MAKE_ANY_SYM(symbol_if), cons(cond_form, cons(ANY_UNIT, cons(body, ANY_UNIT))));
         }
         if (sym == symbol_do) {
-            Any body = unflatten_lets(cctx, args);
+            Any body = process_expr_seq(cctx, args);
             if (consp(body) && nullp(cdr(body))) {
                 return car(body);
             }

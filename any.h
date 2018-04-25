@@ -43,6 +43,7 @@ uint32_t list_length(Any lst);
 Any list_nth(Any lst, uint32_t n);
 Any list_take(Any lst, uint32_t n);
 Any list_drop(Any lst, uint32_t n);
+Any list_append(Any a, Any b);
 
 Any array_length(Any arr);
 Any array_get(Any arr, Any idx);
