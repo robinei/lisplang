@@ -200,6 +200,7 @@ STATIC_ASSERT(sizeof(struct size_16_dummy_struct) == 16, "bad stuct size");
 static uint32_t maybe_move(CompilerCtx *cctx, uint32_t dst_offset, uint32_t result_offset, uint32_t size) {
     if (dst_offset != result_offset) {
         switch (size) {
+        case 0: return dst_offset;
         FOR_ALL_PRIM_MOVE(DEF_EMIT_MOVE)
         default: assert(0 && "bad size");
         }
@@ -321,13 +322,14 @@ uint32_t emit_code(CompilerCtx *cctx, AstNode *node) {
         emit_jfalse(cctx, cond_offset, else_label);
 
         uint32_t then_offset = emit_code(cctx, _if->then_node);
+        maybe_move(cctx, dst_offset, then_offset, _if->then_node->type->size);
         emit_jump(cctx, end_label);
         emit_label(cctx, else_label);
         
         uint32_t else_offset = emit_code(cctx, _if->else_node);
+        maybe_move(cctx, dst_offset, else_offset, _if->else_node->type->size);
         emit_label(cctx, end_label);
 
-        assert(then_offset == else_offset);
         return dst_offset;
     }
     case AST_PRIM_DO: {

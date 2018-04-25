@@ -98,6 +98,13 @@ Any expand_form(CompilerCtx *cctx, Any form) {
             }
             return cons(MAKE_ANY_SYM(symbol_do), body);
         }
+        if (sym == symbol_tagbody) {
+            Any body = process_expr_seq(cctx, args);
+            if (consp(body) && nullp(cdr(body))) {
+                return car(body);
+            }
+            return cons(MAKE_ANY_SYM(symbol_tagbody), body);
+        }
         if (sym == symbol_let) {
             Any bindings = car(args);
             Any body = cdr(args);

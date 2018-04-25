@@ -29,13 +29,11 @@
 
   (let (n :: i32 100000000
         a 0
-        b 1
-        temp 0
-        zero 0)
+        b 1)
       (tagbody
         start
-          (when (> (dec n) zero)
-            (set temp b)
+          (when (> (dec n) 0)
+            (let temp b)
             (set b (+ b a))
             (set a temp)
             (go start))
