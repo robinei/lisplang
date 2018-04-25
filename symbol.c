@@ -65,7 +65,7 @@ void init_symbols(void) {
     symbol_def      = intern_symbol_cstr("def");
     symbol_macrodef = intern_symbol_cstr("macro-def");
     symbol_do       = intern_symbol_cstr("do");
-    symbol_assign   = intern_symbol_cstr("=");
+    symbol_set      = intern_symbol_cstr("set");
     symbol_inc      = intern_symbol_cstr("inc");
     symbol_dec      = intern_symbol_cstr("dec");
     symbol_plus     = intern_symbol_cstr("+");
@@ -74,7 +74,7 @@ void init_symbols(void) {
     symbol_div      = intern_symbol_cstr("/");
     symbol_mod      = intern_symbol_cstr("/");
     symbol_not      = intern_symbol_cstr("not");
-    symbol_eq       = intern_symbol_cstr("==");
+    symbol_eq       = intern_symbol_cstr("=");
     symbol_lt       = intern_symbol_cstr("<");
     symbol_gt       = intern_symbol_cstr(">");
     symbol_lteq     = intern_symbol_cstr("<=");

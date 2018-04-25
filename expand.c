@@ -58,8 +58,6 @@ static Any maybe_wrap_in_do(CompilerCtx *cctx, Any form) {
     return cons(MAKE_ANY_SYM(symbol_do), form);
 }
 
-void print_form(Any form);
-
 Any expand_form(CompilerCtx *cctx, Any form) {
     if (!consp(form)) {
         return form;

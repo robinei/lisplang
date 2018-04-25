@@ -489,7 +489,7 @@ AstNode *parse_form(CompilerCtx *cctx, Any form, Binding *dst_binding, uint32_t 
                 return (AstNode *)node;
             }
 
-            if (symbol == symbol_assign) {
+            if (symbol == symbol_set) {
                 Any rest = cdr(form);
                 AstPrimNode *node = create_prim_node(cctx, AST_PRIM_ASSIGN, rest, flags);
                 assert(node->arg_count == 2);

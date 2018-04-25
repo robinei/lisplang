@@ -16,6 +16,7 @@
     (print (+ x y)))
 
   (do (let x 2)
+      (set x 3)
       (let y 5
            z 10)
       (print (+ x (+ y z))))
@@ -23,7 +24,7 @@
   (let (x 0
         g (fun (x :: i32) (* x 2))
         f (fun (x :: i32) (g x)))
-    (= x (g 10))
+    (set x (g 10))
     (print x))
 
   (let (n :: i32 100000000
@@ -34,8 +35,8 @@
       (tagbody
         start
           (when (> (dec n) zero)
-            (= temp b)
-            (= b (+ b a))
-            (= a temp)
+            (set temp b)
+            (set b (+ b a))
+            (set a temp)
             (go start))
           (print b))))
