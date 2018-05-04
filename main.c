@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     init_types();
     init_symbols();
 
-    int32_t iters = 10000000;
+    int32_t iters = 100000000;
     if (argc > 1) {
         iters = atoi(argv[1]);
     }
